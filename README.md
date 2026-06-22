@@ -1,7 +1,7 @@
 # Certillion — Kit de Integração para IA
 
 Conjunto de arquivos que habilitam assistentes de IA (Claude Code, Codex, Cursor, Windsurf,
-GitHub Copilot, Antigravity e outros) a integrar a **API Certillion de assinatura digital
+GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API Certillion de assinatura digital
 ICP-Brasil** de forma rápida e correta — gerando código que já respeita o fluxo de autenticação,
 os padrões de assinatura, as regras de custo e os pontos de atenção da plataforma.
 
@@ -70,6 +70,7 @@ simples e portável de configurar:
 | **Cursor** | `.cursor/rules/*.mdc` ou `AGENTS.md` na raiz | Sim |
 | **Windsurf** (Devin Desktop) | `.windsurf/rules/` ou `AGENTS.md` na raiz | Sim |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | Sim (também lê AGENTS.md) |
+| **Lovable** | GitHub sync: `AGENTS.md` na raiz; ou Project Knowledge (Settings → Knowledge) | Via GitHub sync |
 | **Google Antigravity** | `AGENTS.md`, `GEMINI.md` ou `.agents/rules/`; suporta Skills em `.agents/skills/` | Sim (desde v1.20.3) |
 
 ### Notas por harness
@@ -84,6 +85,13 @@ simples e portável de configurar:
   com frontmatter `applyTo`.
 - **Antigravity:** como suporta o formato `SKILL.md`, o `certillion-skill.md` funciona como skill
   nativa em `.agents/skills/`.
+- **Lovable:** dois caminhos — (1) conecte o projeto ao GitHub (Settings → Connectors → GitHub,
+  instale o Lovable GitHub App, sync bidirecional na branch `main`) e coloque `AGENTS.md` na raiz
+  do repositório: o Lovable lê o arquivo automaticamente a cada request; (2) sem GitHub, cole o
+  conteúdo de `certillion-skill.md` + as principais regras do `certillion-api-reference.md` no
+  **Project Knowledge** do projeto (Settings → Knowledge — limite de 10 000 caracteres; a skill
+  sozinha cabe com margem para regras complementares). O Project Knowledge é enviado em todas as
+  conversas — não é necessário repetir as instruções a cada sessão.
 
 ## Por onde começar
 
