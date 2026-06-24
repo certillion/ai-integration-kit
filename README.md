@@ -5,7 +5,7 @@ GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API Certillion de 
 ICP-Brasil** de forma rápida e correta — gerando código que já respeita o fluxo de autenticação,
 os padrões de assinatura, as regras de custo e os pontos de atenção da plataforma.
 
-> Versão: 0.2-beta · Documentação pública.
+> Versão: 0.3-beta · Documentação pública.
 
 ## Para que serve
 
@@ -20,8 +20,9 @@ Ficam em [`docs/certillion/`](docs/certillion/). Cada um tem um papel distinto e
 
 | Arquivo | Papel | Quando usar |
 |---------|-------|-------------|
-| `certillion-skill.md` | As **regras** (R1–R13) que todo código de integração deve seguir | Sempre — governa o comportamento da IA |
+| `certillion-skill.md` | As **regras** (R1–R16) que todo código de integração deve seguir | Sempre — governa o comportamento da IA |
 | `certillion-api-reference.md` | **Guia conceitual**: fluxos, custo, decisões, diagnóstico | Para entender *como* e *por que* algo funciona |
+| `certillion-troubleshooting.md` | **FAQ + runbook de falhas**: perguntas frequentes, diagnóstico, coleta de evidências e suporte | "Como faço X" ou quando uma chamada falha (integração ou produção) |
 | `certillion-openapi.yaml` | **Schema canônico** (OpenAPI 3.0) — a mecânica exata de cada endpoint | Para o detalhe preciso de um endpoint; importar em Postman/Insomnia; gerar SDK |
 | `certillion-examples-nodejs.md` | Exemplos de código — Node.js / TypeScript | Ao escrever o código na linguagem-alvo |
 | `certillion-examples-python.md` | Exemplos de código — Python | idem |
@@ -55,7 +56,7 @@ simples e portável de configurar:
    - Guia conceitual: docs/certillion/certillion-api-reference.md
    - Schema (fonte canônica de endpoints): docs/certillion/certillion-openapi.yaml
    - Exemplos de código: docs/certillion/certillion-examples-<linguagem>.md
-   A skill define as regras (R1–R13); o schema é a fonte de verdade para campos e tipos.
+   A skill define as regras (R1–R16); o schema é a fonte de verdade para campos e tipos.
    ```
 
 3. Para o Claude Code (que não lê `AGENTS.md` diretamente), referencie-o no `CLAUDE.md`
@@ -117,4 +118,4 @@ Dúvidas durante a integração: https://certillion.com/fale-conosco-certillion/
 
 ---
 
-*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.2-beta.*
+*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.3-beta.*

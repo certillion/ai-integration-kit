@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.2-beta | Linguagem: PHP 8.0+
+> Versão: 0.3-beta | Linguagem: PHP 8.0+
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -121,6 +121,7 @@ function getSigningToken(string $code, string $verifier, string $psc, string $re
             'grant_type' => 'authorization_code',
             'code' => $code,
             'code_verifier' => $verifier,
+            // manager_id/manager_secret: a API espera estes nomes aqui; o VALOR é o mesmo de client_id/client_secret (nome legado). Não remover.
             'manager_id' => $CLIENT_ID,
             'manager_secret' => $CLIENT_SECRET,
             'psc' => $psc,

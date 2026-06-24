@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.2-beta | Linguagem: Node.js 18+ / TypeScript
+> Versão: 0.3-beta | Linguagem: Node.js 18+ / TypeScript
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -110,6 +110,7 @@ async function getSigningToken(
     grant_type: 'authorization_code',
     code,
     code_verifier: verifier,
+    // manager_id/manager_secret: a API espera estes nomes aqui; o VALOR é o mesmo de client_id/client_secret (nome legado). Não remover.
     manager_id: CLIENT_ID,
     manager_secret: CLIENT_SECRET,
     psc,

@@ -7,8 +7,10 @@ description: >
   RemoteID, NeoID, CERTILLION_SIGNER), otimizar custo de assinaturas, ou gerar/validar QR Code
   de prescrições digitais. Também usar quando o desenvolvedor mencionar: client_token, authorize,
   psc-info, document upload, signature, transaction_id, code_challenge, code_verifier, PKCE,
-  PAdES, CAdES, XAdES, ou qualquer outro endpoint da API Certillion.
-version: "0.2-beta"
+  PAdES, CAdES, XAdES, manager_id, manager_secret, scope/signature_session, lifetime ou duração
+  de sessão (reaproveitar token / não reautenticar a cada documento), certificado local
+  (A1/.pfx, A3, Assinador Certillion, cloud-ws), ou qualquer outro endpoint da API Certillion.
+version: "0.3-beta"
 language: pt-BR
 classification: público — distribuível a clientes e parceiros
 ---
@@ -210,6 +212,70 @@ Isso transforma um beco sem saída ("erro genérico → ninguém sabe o que houv
 autorrastreável, e reduz drasticamente o atrito de suporte. A lista completa de códigos está em
 `certillion-openapi.yaml` e na referência rápida do `certillion-api-reference.md`.
 
+> **A camada 3 é obrigatória e é um controle de UI, não só um log.** O "Ver detalhes / Avançado"
+> deve **exibir** o JSON bruto (`status.code`, `status.name`, `status.detail`, HTTP status, id da
+> transação) com ação de **copiar/salvar**. A mensagem amigável (camada 2) deve ser **derivada do
+> `status.code` real** — nunca um texto fixo/palpite (ex.: "verifique se a URL está cadastrada").
+> Código não mapeado → mensagem neutra + sempre o "Ver detalhes". Critério de aceite: o usuário
+> consegue recuperar o `status.code` sem acionar o time de desenvolvimento.
+
+### R14 — Credenciais: o nome correto é `client_id`/`client_secret` (atenção ao nome `manager_id`/`manager_secret`)
+
+A credencial enviada a você pela e-Sec é o par **`client_id` / `client_secret`** — esse é o nome
+correto, usado em `/oauth/client_token` e `/oauth/find-psc-accounts`.
+
+Em `/oauth/authorize` e `/oauth/token`, parte da documentação/da API usa os nomes
+`manager_id` / `manager_secret` para os **mesmos valores** — é uma **inconsistência de
+nomenclatura**, não credenciais separadas. `manager_id` recebe o valor do seu `client_id`;
+`manager_secret`, o do `client_secret`. Onde esses nomes aparecerem, envie os mesmos valores e
+**não os omita** — o erro comum de código gerado por IA é "deduplicar" e remover `manager_id`,
+fazendo o `/token` falhar com `invalid_grant`.
+
+| Chamada | Parâmetros de credencial esperados |
+|---------|------------------------------------|
+| `/oauth/client_token`, `/oauth/find-psc-accounts` | `client_id`, `client_secret` |
+| `GET /oauth/authorize` | `manager_id` (= valor do `client_id`) |
+| `POST /oauth/token` | `client_id`, `client_secret`, `manager_id`, `manager_secret` (todos com os valores das suas credenciais) |
+
+O nome `certillion_manager_id` **não existe** — é `manager_id`. Os exemplos por linguagem já enviam
+os campos corretos onde a API os espera; não os remova ao gerar ou refatorar código.
+
+### R15 — Sessão reaproveitável: persistir e reutilizar o token de assinatura
+
+Para o usuário autenticar **uma vez** e assinar vários documentos sem repetir o login no PSC
+(ex.: VIDAAS) a cada assinatura:
+
+1. No `/authorize`, usar `scope=signature_session` e `lifetime` na duração desejada em **segundos**
+   (ex.: `lifetime=43200` = 12 h).
+2. **Persistir** o `access_token` **e** o `expires_in` retornados por `/token`.
+3. **Reutilizar** esse `access_token` em **todas** as chamadas `/signature` enquanto válido —
+   **não** refazer `/authorize` + `/token` por documento (isso força novo login e infla chamadas).
+4. Reautenticar (passos 3–4) só ao expirar ou ao receber `249`/`250` (ver R5).
+
+A duração **efetiva** é definida pelo PSC, não pelo `lifetime` pedido (R6): usar sempre o
+`expires_in`. Se o PSC limitar a sessão abaixo do necessário, é característica do provedor — ver
+`certillion-troubleshooting.md` para o que levantar antes de perguntar ao Certillion.
+
+### R16 — Certificado local (`CERTILLION_SIGNER`): servidor `cloud-ws` e app Assinador
+
+Para assinar com certificado **local** do usuário (A1 em arquivo `.pfx` ou A3 em hardware
+USB/cartão), o código é **idêntico** ao de certificado em nuvem, mudando apenas:
+
+- `psc=CERTILLION_SIGNER`;
+- Base URL `https://cloud-ws.certillion.com/css/restful/application` (os demais PSCs usam
+  `cloud.certillion.com`; servidor trocado → `404`).
+
+**Restrição que o integrador precisa conhecer (e que a IA deve sinalizar):** por segurança, o
+Certillion **não armazena chaves do usuário**. **Não** é possível subir um `.pfx` para o backend
+do integrador e pedir que o Certillion assine com ele. O usuário final precisa instalar o app
+**Assinador Certillion** na própria máquina (Windows, macOS, iOS, Android), que detém o acesso ao
+certificado (download em `certillion.com`). Ao gerar código com `CERTILLION_SIGNER`, orientar o
+integrador a instruir seus usuários a instalar o app antes de assinar. Na lista de PSCs apresentada
+ao usuário (vinda de `/psc-info` ou `/find-psc-accounts`), incluir uma opção "Certificado Local /
+Token Físico" que seleciona `CERTILLION_SIGNER`. **Nunca** transmita o arquivo de certificado com
+chave privada (`.pfx`/`.p12`) nem a senha do certificado — para o seu backend, para o Certillion ou
+para logs. A chave permanece com o usuário (no app Assinador, no caso local).
+
 ---
 
 ## Exemplos de código e referência de endpoints
@@ -244,6 +310,10 @@ R6 expires_in, R9 tamanho/transferência e R12 padrão de assinatura).
 | Timeout no lote | Lote muito grande | Reduzir para 5–10 itens por chamada |
 | BirdID falha ao assinar mesmo com certificado válido | Conta sem créditos no PSC (retorna `218 USERS_EXCEEDED_MAXIMUM_ALLOWED` ou `212 ACCOUNT_NO_CREDIT`) | Orientar o usuário a verificar o saldo/contratação de créditos junto ao BirdID; tratar esses códigos com mensagem específica (ver R13) |
 | Usuário final frustrado, sem saber o que deu errado | Sistema mostra erro genérico e descarta o retorno do Certillion | Tratar o erro conforme R13: mensagem específica + opção de ver o JSON original |
+| `/token` falha logo após receber o `code` (`invalid_grant`/`invalid_client`) | `manager_id`/`manager_secret` omitidos ou diferentes de `client_id`/`client_secret`; ou `redirect_uri` diferente do enviado no `/authorize` | Enviar `manager_id`/`manager_secret` (= `client_*`) e usar o mesmo `redirect_uri` nas duas chamadas (R14) |
+| Usuário precisa reautenticar (VIDAAS etc.) a cada documento | Scope não é `signature_session`, ou o token não é reutilizado, ou `lifetime` curto | Usar `signature_session` + `lifetime` desejado e reutilizar o `access_token` (R15) |
+| `404` ao usar certificado local | Servidor errado para `CERTILLION_SIGNER` | Usar `cloud-ws.certillion.com` com `psc=CERTILLION_SIGNER` (R16) |
+| Certificado local não assina / não encontrado | App Assinador Certillion ausente na máquina do usuário | Instruir o usuário final a instalar o Assinador Certillion (R16) |
 
 ---
 
@@ -260,4 +330,7 @@ Antes de gerar qualquer código de integração, confirmar internamente:
 - [ ] O padrão de assinatura foi escolhido pela necessidade do documento, ciente de que PAdES/XAdES custam ~30% mais que CAdES (R12)
 - [ ] QR Code e rodapé são adicionados antes do upload (R10)
 - [ ] Credenciais estão em variáveis de ambiente (R11)
-- [ ] O erro do Certillion é preservado e exibido em camadas: mensagem específica + "ver detalhes" com o JSON original (R13)
+- [ ] O erro do Certillion é preservado e exibido em camadas: mensagem específica (derivada do `status.code`) + "ver detalhes" com o JSON original e copiar/salvar (R13)
+- [ ] `manager_id`/`manager_secret` são enviados além de `client_id`/`client_secret` — `/authorize` leva `manager_id`; `/token` leva os dois pares (R14)
+- [ ] Se o usuário assina vários documentos: `signature_session` + persistência/reutilização do `access_token` (R15)
+- [ ] Se usa certificado local: `CERTILLION_SIGNER` + `cloud-ws` e o usuário é orientado a instalar o Assinador Certillion (R16)

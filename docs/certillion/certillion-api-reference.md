@@ -4,7 +4,7 @@
 > Não contém informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 
 > Guia conceitual para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.2-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.3-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -127,9 +127,37 @@ A chave de produção é liberada após aprovação contratual. A migração de 
 O Certillion aceita **qualquer certificado ICP-Brasil** vinculado ao CPF do titular, em diferentes formas:
 
 - **Certificado em nuvem**, via PSC (VIDAAS, SafeID, RemoteID, NeoID, VaultID, BirdID, DSCloud, etc.) — fluxo OAuth2 padrão.
-- **Certificado local** (token físico USB/cartão ou arquivo A1), via `CERTILLION_SIGNER` — usa o servidor `cloud-ws`.
+- **Certificado local** (A3 em hardware USB/cartão, ou A1 em arquivo `.pfx`), via `psc=CERTILLION_SIGNER` — usa o servidor `cloud-ws.certillion.com` e **exige o app Assinador Certillion na máquina do usuário** (ver abaixo).
 
 A lista de PSCs suportados é mantida pelo Certillion e exposta por `GET /oauth/psc-info` — **novos provedores passam a funcionar sem alteração de código** no sistema integrador. Por isso, popular a seleção de provedor a partir desse endpoint, em vez de manter uma lista fixa no código.
+
+#### Certificado local (`CERTILLION_SIGNER`) e o app Assinador Certillion
+
+Por decisão de segurança, **o Certillion não armazena nenhuma chave/certificado do usuário na plataforma**. Portanto, **não é possível** o sistema integrador subir um arquivo `.pfx` para o seu backend e pedir que o Certillion assine com ele.
+
+Para usar um certificado **local** (A1 `.pfx` ou A3 em hardware), o **usuário final** instala o app **Assinador Certillion** na própria máquina (disponível para Windows, macOS, iOS e Android). O app detém o acesso ao certificado — a chave nunca sai do dispositivo do usuário.
+
+Do ponto de vista do **código**, o fluxo é **idêntico** ao de um certificado em nuvem. A única diferença:
+
+| | Certificado em nuvem (VIDAAS, SerproID, etc.) | Certificado local (Assinador) |
+|---|---|---|
+| `psc` | o PSC escolhido | `CERTILLION_SIGNER` |
+| Base URL | `cloud.certillion.com` | `cloud-ws.certillion.com` |
+| App na máquina do usuário | não | **sim — Assinador Certillion** |
+
+> Servidor trocado → `404`. Usar `cloud-ws.certillion.com` **somente** com `CERTILLION_SIGNER`; `cloud.certillion.com` para os demais.
+
+> **Orientação ao integrador:** se a sua aplicação oferece certificado local, informe ao usuário final que ele precisa instalar o Assinador Certillion **antes** de assinar. O app está disponível em `certillion.com` (Windows, macOS, iOS e Android).
+
+#### Seleção de PSC pelo usuário final
+
+Recomenda-se que **o próprio usuário final** (o médico, por exemplo) escolha o provedor de certificado. Como montar a lista de opções:
+
+1. **Padrão:** popular a lista a partir de `GET /oauth/psc-info`, que retorna todos os PSCs em nuvem suportados — assim novos provedores aparecem sem alterar código.
+2. **Lista enxuta (se o sistema souber o CPF):** chamar `POST /oauth/find-psc-accounts` para descobrir em **quais** PSCs aquele CPF tem certificado, e mostrar só esses.
+3. **Certificado local:** acrescentar à lista uma opção do tipo **"Certificado Local" / "Token Físico"** que, ao ser escolhida, usa `psc=CERTILLION_SIGNER` (e o servidor `cloud-ws.certillion.com`).
+
+O fluxo de assinatura é **o mesmo** para qualquer opção escolhida — muda apenas o `psc` (e a base URL, no caso do `CERTILLION_SIGNER`). Um código que já funciona com um PSC (ex.: VIDAAS) passa a funcionar com todos os demais.
 
 ---
 
@@ -180,6 +208,8 @@ A lista de PSCs suportados é mantida pelo Certillion e exposta por `GET /oauth/
 ```
 
 > Parâmetros e respostas de cada passo: ver `certillion-openapi.yaml`.
+
+> **Parâmetros de credencial que a IA costuma omitir:** a credencial correta é `client_id`/`client_secret`. Em `/authorize` e `/token`, parte da doc/da API usa os nomes `manager_id`/`manager_secret` para os **mesmos valores** (inconsistência de nomenclatura, não credenciais separadas): o `/authorize` espera `manager_id` (= `client_id`); o `/token` espera `client_id`, `client_secret`, `manager_id` e `manager_secret`, todos com os valores das suas credenciais. Não omitir onde a API os espera. Ver R14 da skill.
 
 ---
 
@@ -349,6 +379,17 @@ const hash = crypto.createHash('sha256').update(fileBuffer).digest('base64');
 | `single_signature` | Autoriza 1 chamada `/signature` para 1 documento |
 | `multi_signature` | Autoriza 1 chamada `/signature` para lote de documentos |
 | `signature_session` | Autoriza N chamadas durante o período de `lifetime`. Uso recomendado para sistemas onde o usuário assina múltiplos documentos em sequência |
+
+### Padrão recomendado: sessão reaproveitável (não reautenticar a cada documento)
+
+Para o usuário autenticar **uma vez** e assinar vários documentos sem repetir o login no PSC (ex.: VIDAAS) a cada assinatura:
+
+1. No `/authorize`, usar `scope=signature_session` e `lifetime` na duração desejada em **segundos** (ex.: `lifetime=43200` = 12 h = 12 × 60 × 60).
+2. Em `/token`, **persistir** o `access_token` **e** o `expires_in` retornados.
+3. Reutilizar esse `access_token` em **todas** as chamadas `/signature` enquanto não expirar — **não** refazer os passos 3–4 (`/authorize` + `/token`) a cada documento.
+4. Reautenticar (passos 3–4) só quando o `expires_in` se esgotar ou ao receber `249`/`250`.
+
+> **A duração efetiva é definida pelo PSC, não pelo `lifetime` pedido** (Regra 4): o `lifetime` é uma sugestão. Alguns PSCs admitem horas (RemoteID, até 24 h); outros cortam para minutos (SerproID, ~15 min). Sempre tratar o `expires_in` de `/token` como a verdade. Se o PSC escolhido limitar a sessão abaixo do necessário, isso é característica do provedor — ver `certillion-troubleshooting.md` (perguntas de capacidade ao Certillion) para o que levantar antes de abrir a dúvida.
 
 ---
 

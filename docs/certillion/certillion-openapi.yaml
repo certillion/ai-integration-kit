@@ -2,7 +2,7 @@ openapi: "3.0.3"
 
 info:
   title: Certillion API
-  version: "0.2-beta"
+  version: "0.3-beta"
   description: >
     Documento público — distribuível a clientes e parceiros integradores. Não contém
     informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
@@ -313,18 +313,23 @@ components:
           example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         manager_id:
           type: string
-          description: Mesmo valor que client_id — identificador da aplicação.
+          description: >
+            Obrigatório aqui. Mesmo valor que client_id — nome legado/inconsistente para a mesma
+            credencial (não é separada). Enviar client_id e manager_id com o mesmo valor; não
+            omitir. Nome do campo: manager_id (não certillion_manager_id).
         manager_secret:
           type: string
-          description: Mesmo valor que client_secret — segredo da aplicação.
+          description: >
+            Obrigatório aqui. Mesmo valor que client_secret — nome legado/inconsistente para a
+            mesma credencial. Enviar client_secret e manager_secret com o mesmo valor; não omitir.
         psc:
           $ref: "#/components/schemas/PSCIdentifier"
           description: Mesmo PSC informado no /authorize.
         redirect_uri:
           type: string
           description: >
-            Mesma URI informada no /authorize. Opcional se cadastrada fixamente
-            nas credenciais da aplicação junto à e-Sec.
+            Deve ser idêntica à enviada no /authorize. Não requer pré-cadastro — qualquer URL
+            é aceita desde que seja exatamente igual nas duas chamadas (/authorize e /token).
           example: "https://seudominio.com.br/callback"
 
     TokenResponse:
@@ -933,9 +938,11 @@ components:
         redirect_uris:
           type: array
           description: >
-            URIs de callback válidas para OAuth2. O Certillion redirecionará
-            apenas para URIs cadastradas aqui. Ao cadastrar, o redirect_uri
-            pode ser omitido nas chamadas /authorize e /token.
+            (Opcional) Cadastro de URIs de callback, feito no cadastro da aplicação. NÃO é
+            obrigatório: o fluxo OAuth funciona com qualquer redirect_uri, desde que o mesmo
+            valor seja usado em /authorize e /token. Se houver cadastro, o redirect_uri pode ser
+            omitido nessas chamadas; para usar uma URI diferente da cadastrada, informe a nova no
+            campo redirect_uri de /authorize e /token (mesmo valor nas duas).
           items:
             type: string
             format: uri
@@ -1136,7 +1143,10 @@ paths:
           required: true
           schema:
             type: string
-          description: CLIENT_ID da aplicação.
+          description: >
+            Obrigatório aqui. Recebe o MESMO valor do client_id — é um nome legado/inconsistente
+            na documentação para a mesma credencial (não é separada). Não omitir. Nome do campo:
+            manager_id (não certillion_manager_id).
         - name: code_challenge
           in: query
           required: true
@@ -1169,8 +1179,10 @@ paths:
           schema:
             type: integer
           description: >
-            Sugestão de duração da sessão em segundos. Default 300.
-            O PSC pode retornar tempo menor. Usar expires_in de /token como verdade.
+            Sugestão de duração da sessão em segundos. Default 300. O PSC pode retornar tempo
+            menor — usar expires_in de /token como verdade. Para o usuário não reautenticar a
+            cada documento, combinar com scope=signature_session e persistir/reutilizar o token
+            (ex.: lifetime=43200 = 12 h).
           example: 14400
         - name: redirect_uri
           in: query
@@ -1178,7 +1190,10 @@ paths:
           schema:
             type: string
             format: uri
-          description: URI de callback. Pode ser omitida se cadastrada nas credenciais.
+          description: >
+            URI de callback. Pode ser qualquer URL — não requer pré-cadastro. Regra única:
+            ser idêntica à enviada no /token. (Omitir só faz sentido se houver cadastro fixo
+            via client_maintenance, que é opcional e não necessário para o fluxo funcionar.)
         - name: state
           in: query
           required: false
@@ -1539,9 +1554,10 @@ paths:
       tags: [Aplicação]
       summary: Atualiza dados cadastrais da aplicação
       description: >
-        Permite atualizar nome, redirect_uris e e-mail de suporte da aplicação.
-        Cadastrar redirect_uris aqui elimina a necessidade de passá-las em
-        /authorize e /token.
+        Permite atualizar nome, redirect_uris (cadastro opcional) e e-mail de suporte da
+        aplicação. O cadastro de redirect_uris não é obrigatório — serve apenas para poder
+        omitir o redirect_uri em /authorize e /token; sem ele, basta usar o mesmo valor nas
+        duas chamadas.
       security:
         - BearerClientToken: []
       requestBody:
