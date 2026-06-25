@@ -209,7 +209,7 @@ O fluxo de assinatura é **o mesmo** para qualquer opção escolhida — muda ap
 
 > Parâmetros e respostas de cada passo: ver `certillion-openapi.yaml`.
 
-> **Parâmetros de credencial que a IA costuma omitir:** a credencial correta é `client_id`/`client_secret`. Em `/authorize` e `/token`, parte da doc/da API usa os nomes `manager_id`/`manager_secret` para os **mesmos valores** (inconsistência de nomenclatura, não credenciais separadas): o `/authorize` espera `manager_id` (= `client_id`); o `/token` espera `client_id`, `client_secret`, `manager_id` e `manager_secret`, todos com os valores das suas credenciais. Não omitir onde a API os espera. Ver R14 da skill.
+> **Parâmetros de credencial — mapeamento:** as credenciais enviadas por e-mail são `client_id`/`client_secret`. A documentação oficial da API usa, em `/authorize` e `/token`, os nomes de parâmetro `manager_id`/`manager_secret`: `manager_id` recebe o valor do `client_id` e `manager_secret`, o do `client_secret`. O `/authorize` leva `manager_id`; o `/token` leva `client_id`, `client_secret`, `manager_id` e `manager_secret`. Não omitir. Ver R14 da skill.
 
 ---
 

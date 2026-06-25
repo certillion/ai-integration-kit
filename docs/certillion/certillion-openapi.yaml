@@ -314,14 +314,14 @@ components:
         manager_id:
           type: string
           description: >
-            Obrigatório aqui. Mesmo valor que client_id — nome legado/inconsistente para a mesma
-            credencial (não é separada). Enviar client_id e manager_id com o mesmo valor; não
-            omitir. Nome do campo: manager_id (não certillion_manager_id).
+            Obrigatório. Nome de parâmetro da documentação oficial da API; use o valor do seu
+            client_id (manager_id = client_id). Não omitir. Nome do campo: manager_id (não
+            certillion_manager_id).
         manager_secret:
           type: string
           description: >
-            Obrigatório aqui. Mesmo valor que client_secret — nome legado/inconsistente para a
-            mesma credencial. Enviar client_secret e manager_secret com o mesmo valor; não omitir.
+            Obrigatório. Nome de parâmetro da documentação oficial da API; use o valor do seu
+            client_secret (manager_secret = client_secret). Não omitir.
         psc:
           $ref: "#/components/schemas/PSCIdentifier"
           description: Mesmo PSC informado no /authorize.
@@ -1144,9 +1144,9 @@ paths:
           schema:
             type: string
           description: >
-            Obrigatório aqui. Recebe o MESMO valor do client_id — é um nome legado/inconsistente
-            na documentação para a mesma credencial (não é separada). Não omitir. Nome do campo:
-            manager_id (não certillion_manager_id).
+            Obrigatório. Nome de parâmetro usado pela documentação oficial da API; receba o valor
+            do seu client_id (manager_id = client_id). Não omitir. Nome do campo: manager_id
+            (não certillion_manager_id).
         - name: code_challenge
           in: query
           required: true

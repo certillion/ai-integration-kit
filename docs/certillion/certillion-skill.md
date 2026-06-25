@@ -219,26 +219,30 @@ autorrastreável, e reduz drasticamente o atrito de suporte. A lista completa de
 > Código não mapeado → mensagem neutra + sempre o "Ver detalhes". Critério de aceite: o usuário
 > consegue recuperar o `status.code` sem acionar o time de desenvolvimento.
 
-### R14 — Credenciais: o nome correto é `client_id`/`client_secret` (atenção ao nome `manager_id`/`manager_secret`)
+### R14 — Credenciais: `client_id`/`client_secret` (e-mail) usados como `manager_id`/`manager_secret` (parâmetros da API)
 
-A credencial enviada a você pela e-Sec é o par **`client_id` / `client_secret`** — esse é o nome
-correto, usado em `/oauth/client_token` e `/oauth/find-psc-accounts`.
+As credenciais que a e-Sec envia por e-mail são **`client_id` e `client_secret`**. A
+**documentação oficial da API** usa, em `/oauth/authorize` e `/oauth/token`, os nomes de parâmetro
+**`manager_id` e `manager_secret`** — com os mesmos valores:
 
-Em `/oauth/authorize` e `/oauth/token`, parte da documentação/da API usa os nomes
-`manager_id` / `manager_secret` para os **mesmos valores** — é uma **inconsistência de
-nomenclatura**, não credenciais separadas. `manager_id` recebe o valor do seu `client_id`;
-`manager_secret`, o do `client_secret`. Onde esses nomes aparecerem, envie os mesmos valores e
-**não os omita** — o erro comum de código gerado por IA é "deduplicar" e remover `manager_id`,
-fazendo o `/token` falhar com `invalid_grant`.
+- `manager_id` ← valor do `client_id`
+- `manager_secret` ← valor do `client_secret`
 
-| Chamada | Parâmetros de credencial esperados |
-|---------|------------------------------------|
-| `/oauth/client_token`, `/oauth/find-psc-accounts` | `client_id`, `client_secret` |
-| `GET /oauth/authorize` | `manager_id` (= valor do `client_id`) |
-| `POST /oauth/token` | `client_id`, `client_secret`, `manager_id`, `manager_secret` (todos com os valores das suas credenciais) |
+**Não omita** esses parâmetros onde a API os exige — o erro comum de código gerado por IA é
+"deduplicar" e remover `manager_id` por parecer igual a `client_id`, fazendo o `/token` falhar
+com `invalid_grant`.
+
+| Chamada | Parâmetros de credencial | Valor a enviar |
+|---------|--------------------------|----------------|
+| `/oauth/client_token`, `/oauth/find-psc-accounts` | `client_id`, `client_secret` | suas credenciais |
+| `GET /oauth/authorize` | `manager_id` | valor do `client_id` |
+| `POST /oauth/token` | `client_id`, `client_secret`, `manager_id`, `manager_secret` | `manager_id` = `client_id`, `manager_secret` = `client_secret` |
 
 O nome `certillion_manager_id` **não existe** — é `manager_id`. Os exemplos por linguagem já enviam
-os campos corretos onde a API os espera; não os remova ao gerar ou refatorar código.
+os parâmetros corretos; não os remova ao gerar ou refatorar código.
+
+> Fonte dos nomes `manager_id`/`manager_secret`: documentação oficial da API —
+> https://certillion.com/certillion-api/api-certillion-assinatura-digital-documentacao/
 
 ### R15 — Sessão reaproveitável: persistir e reutilizar o token de assinatura
 

@@ -197,7 +197,7 @@ falhou** (Regra 1):
 - PKCE: `code_verifier` é o par exato do `code_challenge` (S256) do **mesmo** fluxo.
 - `code` de uso único: trocar imediatamente, nunca reutilizar.
 - `redirect_uri` **idêntico** entre `/authorize` e `/token` (cuidado com barra final, `http`/`https`, maiúsculas). **Não precisa ser pré-cadastrado** — a única regra é usar o mesmo valor nas duas chamadas.
-- `manager_id`/`manager_secret` **enviados** onde a API os espera (nunca omitir): no `/authorize`, `manager_id` (= valor do `client_id`); no `/token`, `manager_id` e `manager_secret` junto de `client_id`/`client_secret`, todos com os valores da sua credencial. **A credencial correta é `client_id`/`client_secret`** — `manager_*` é só um nome legado/inconsistente para os mesmos valores. `certillion_manager_id` não existe.
+- `manager_id`/`manager_secret` **enviados** (nunca omitir): são os nomes de parâmetro da API (documentação oficial) — `manager_id` recebe o valor do `client_id` e `manager_secret`, o do `client_secret`. No `/authorize`, `manager_id`; no `/token`, `manager_id` e `manager_secret` (os exemplos enviam também `client_id`/`client_secret`). `certillion_manager_id` não existe.
 - `psc` igual ao informado no `/authorize`.
 - `/signature` com o **token de assinatura** (de `/oauth/token`), não o token de sistema.
 - Tamanho de arquivo (teste, 100 KB) e tipo de documento vs. `signature_standard`.

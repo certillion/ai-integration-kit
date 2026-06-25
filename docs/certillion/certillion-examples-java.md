@@ -134,7 +134,7 @@ String getSigningToken(HttpClient http, String code, String verifier,
         + "&grant_type=authorization_code"
         + "&code=" + code
         + "&code_verifier=" + verifier
-        // manager_id/manager_secret: a API espera estes nomes aqui; o VALOR é o mesmo de client_id/client_secret (nome legado). Não remover.
+        // manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
         + "&manager_id=" + CLIENT_ID
         + "&manager_secret=" + CLIENT_SECRET
         + "&psc=" + psc
