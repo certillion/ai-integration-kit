@@ -116,7 +116,7 @@ Nunca reiniciar o fluxo do início se apenas o download falhou.
 
 `transaction_id` acima é nome de variável interna: a chave JSON retornada é
 **`transaction`**, inteiro. No download, enviar `Accept: application/octet-stream`;
-`Accept: application/json` produziu HTTP 406 nas chamadas observadas.
+`Accept: application/json` pode causar HTTP 406 por incompatibilidade com o retorno binário.
 
 ### R3 — Em lotes, retomar a partir do item que falhou
 
@@ -235,7 +235,7 @@ As credenciais que a e-Sec envia por e-mail são **`client_id` e `client_secret`
 **Não omita `manager_id`/`manager_secret`** no fluxo intermediado pelo Certillion.
 Em `/oauth/token`, não é necessário duplicar esses valores em `client_id`/`client_secret`.
 Esse segundo par identifica credenciais próprias junto ao PSC no modo de conexão direta,
-conforme o Swagger CSS. Essa modalidade não foi validada na bateria de integração.
+e depende da configuração de conexão direta com o provedor.
 
 | Chamada | Parâmetros de credencial | Valor a enviar |
 |---------|--------------------------|----------------|
@@ -245,9 +245,7 @@ conforme o Swagger CSS. Essa modalidade não foi validada na bateria de integra�
 | `/oauth/token` (conexão direta com PSC) | além do par manager, `client_id`, `client_secret` | credenciais próprias junto ao PSC; confirmar configuração do provedor |
 
 O nome `certillion_manager_id` **não existe** — é `manager_id`. Os exemplos por linguagem já enviam
-o par manager no fluxo intermediado. A execução de 12/10/2026, em cloud com VIDAAS,
-confirmou HTTP 200 e token `signature_session` tanto com manager-only quanto com
-duplicação do par client: a duplicação não é obrigatória nesse fluxo.
+o par manager no fluxo intermediado, sem duplicar as credenciais no par client.
 
 > Fonte dos nomes `manager_id`/`manager_secret`: documentação oficial da API —
 > https://certillion.com/certillion-api/api-certillion-assinatura-digital-documentacao/

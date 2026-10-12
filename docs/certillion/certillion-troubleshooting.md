@@ -138,7 +138,7 @@ Antes de abrir suporte, identifique o passo e tente o auto-fix. A lista completa
 | **(2) `POST /oauth/document`** | Upload rejeitado; `713 WRONG_DOCUMENT_TYPE` | Em **teste**, arquivo > 100 KB (limite rígido); tipo incompatível com o padrão | Conferir tamanho (teste) e o `signature_standard` vs. tipo do arquivo |
 | **(5) `POST /oauth/signature`** | `250 INVALID_ACCESS_TOKEN` / `401`; `249`; `212`/`218`; `223`; `301`; `400`; `6xx` | Uso do **token errado** (precisa ser o de assinatura, não o de sistema); sessão expirada; crédito do PSC; certificado | Usar o token de `/oauth/token`; tratar expiração (re-autorizar passos 3–4); backoff em `301`/rate limit |
 | **(6) `GET /oauth/document/{id}`** | `711 DOCUMENT_NOT_FOUND`; `712 WRONG_DOCUMENT_HASH` | `transaction_id` errado; hash divergente | Repetir o download com o `transaction_id` correto — **sem** reassinar (Regra 1) |
-| **(6) Download com HTTP 406** | `Could not find acceptable representation` | Header Accept incompatível com retorno binário, observado com application/json | Usar Accept application/octet-stream e repetir só o download. Ler o ID em signatures[n].transaction |
+| **(6) Download com HTTP 406** | `Could not find acceptable representation` | Header Accept incompatível com retorno binário, como application/json | Usar Accept application/octet-stream e repetir só o download. Ler o ID em signatures[n].transaction |
 
 ### 4.2 Por família de código (quem resolve)
 

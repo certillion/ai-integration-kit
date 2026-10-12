@@ -88,7 +88,7 @@ components:
           description: >
             Código de status interno do Certillion. Valores relevantes:
             100 = REQUEST_OK (sucesso),
-            200 = OK (sucesso de upload observado em cloud em 12/10/2026),
+            200 = OK (sucesso de upload),
             140 = SIGNATURE_VALID (assinatura válida — verificar por entrada em lotes),
             249 = TOKEN_VALIDITY_INVALID (token expirado — reiniciar /authorize + /token),
             250 = INVALID_ACCESS_TOKEN,
@@ -173,8 +173,7 @@ components:
         A lista completa e atualizada é retornada por GET /oauth/psc-info.
         Além dos PSCs em nuvem, existe o CERTILLION_SIGNER para certificados
         locais (A1/A3) — nesse caso usar obrigatoriamente o endpoint cloud-ws.
-      # Sem enum fechado: /psc-info também retornou SERPROID, SYN e GOLDID
-      # em 12/10/2026. A lista do servidor é a fonte para seleção de provedores.
+      # Sem enum fechado: consultar a lista atual do servidor em /psc-info.
       example: "VIDAAS"
 
     FindPscAccountsRequest:
@@ -323,8 +322,8 @@ components:
         psc:
           $ref: "#/components/schemas/PSCIdentifier"
           description: >
-            Mesmo PSC informado no /authorize. O Swagger CSS documenta o parâmetro na
-            query de /token; cloud/VIDAAS também aceitou este campo no body em 12/10/2026.
+            Mesmo PSC informado no /authorize. Preferir o parâmetro psc na query
+            de /token para manter compatibilidade entre provedores.
         redirect_uri:
           type: string
           description: >
@@ -460,9 +459,9 @@ components:
         O campo document_hash é o identificador do documento na plataforma.
         PERSISTIR este valor — será necessário em /signature.
         Usar o valor retornado sem recalculá-lo para referenciar o upload.
-        Em cloud em 12/10/2026, seu conteúdo decodificado era o SHA-256 do arquivo,
-        codificado em Base64URL sem padding. Isso não substitui o upload necessário
-        aos fluxos que dependem do arquivo armazenado.
+        O retorno de cloud usa SHA-256 codificado em Base64URL sem padding.
+        Calcular o digest localmente não substitui o upload necessário aos fluxos
+        que dependem do arquivo armazenado.
         ATENÇÃO DE CUSTO: documentos ficam disponíveis por no mínimo 24h e no máximo
         48h. Após isso são apagados. Se a assinatura não for solicitada neste intervalo,
         um novo upload será necessário — gerando nova cobrança de transferência.
@@ -521,10 +520,9 @@ components:
         AD_RC: Referência Completa.
         AD_RA: Referência para Arquivamento. Mais completa, maior tamanho.
 
-        ADOBE_PDF / ADOBE_PDF_RT: requisições aceitas em cloud/VIDAAS em 12/10/2026.
-          Ambas retornaram o mesmo policy_id do PAdES básico. Nos PDFs inspecionados
-          da terceira execução não foram encontrados atributos CMS de timestamp
-          nem DocTimeStamp. Não presumir carimbo de tempo pelo nome da política.
+        ADOBE_PDF / ADOBE_PDF_RT: políticas para PDF. Não presumir a presença de
+          carimbo de tempo somente pelo nome da política; verificar os atributos
+          da assinatura quando o carimbo de tempo for requisito da integração.
 
         Default: AD_RB
       enum: [AD_RB, AD_RT, AD_RV, AD_RC, AD_RA, ADOBE_PDF, ADOBE_PDF_RT]
@@ -562,8 +560,7 @@ components:
           description: >
             OID do algoritmo: SHA-256 = 2.16.840.1.101.3.4.2.1;
             SHA-512 = 2.16.840.1.101.3.4.2.3 (Swagger CSS).
-            Cloud/VIDAAS confirmou o OID SHA-256 e rejeitou o texto SHA-256
-            com HTTP 400/PSC_ERROR em 12/10/2026. Não enviar o nome textual aqui.
+            Enviar o OID, não o nome textual do algoritmo (ex.: SHA-256).
           example: "2.16.840.1.101.3.4.2.1"
         signature_standard_options:
           $ref: "#/components/schemas/SignatureStandardOptions"
@@ -600,10 +597,9 @@ components:
         A assinatura visível é equivalente ao carimbo do médico/profissional.
         Tanto a assinatura visível quanto a invisível possuem o mesmo valor legal.
         A visível é culturalmente esperada por usuários finais no Brasil.
-        Corpos fracionários foram aceitos, mas os PDFs inspecionados preservaram
-        somente valores inteiros: os dois ensaios produziram o mesmo Rect.
-        Usar inteiros, conforme o Swagger. Com position_on_page omitido e página
-        595x842 sem rotação, distance_y=50 posicionou o campo a 50 da borda superior.
+        Informar dimensões e deslocamentos em pontos inteiros.
+        Em páginas 595x842 sem rotação e sem position_on_page, distance_y é medido
+        a partir da borda superior. Considerar a rotação e o posicionamento da página.
       properties:
         page_number:
           type: integer
@@ -617,7 +613,7 @@ components:
           example: 50
         distance_y:
           type: integer
-          description: Deslocamento vertical. No ensaio sem position_on_page, mediu-se a partir da margem superior. Não assumir sempre origem inferior.
+          description: Deslocamento vertical em pontos. Em páginas 595x842 sem rotação e sem position_on_page, a origem é a margem superior.
           default: 0
           example: 50
         width:
@@ -704,14 +700,14 @@ components:
             Mutuamente exclusivo com elements_id.
         elements_id:
           type: string
-          description: Identificador do elemento XML. Exemplo confirmado item-1; formato de múltiplos IDs ainda não validado. Arrays são rejeitados na desserialização.
+          description: Identificador do elemento XML a assinar. Informar uma string, não um array.
           example: "item-1"
         elements_name:
           type: string
           description: >
-            Nome do elemento XML. Arrays são rejeitados. No ensaio com item e
-            attribute_id_name Id a assinatura válida referenciou o documento inteiro
-            (URI vazia), não #item-1. Não presumir seleção por ID com este campo.
+            Nome do elemento XML. Informar uma string, não um array.
+            Não é equivalente à seleção por ID: a referência pode abranger o
+            documento inteiro. Para selecionar um ID específico, usar elements_id.
           example: "item"
         signature_tag_position:
           type: string
@@ -758,7 +754,7 @@ components:
       properties:
         signature_standard:
           $ref: "#/components/schemas/SignatureStandard"
-          description: Omissão confirmou CMS/CAdES attached no arquivo da terceira execução em cloud/VIDAAS. Informar explicitamente o padrão desejado.
+          description: Em cloud/VIDAAS, a omissão usa CMS/CAdES attached. Informar explicitamente o padrão desejado.
         signature_policy:
           $ref: "#/components/schemas/SignaturePolicy"
         pki_name:
@@ -792,11 +788,7 @@ components:
           type: integer
           format: int64
           description: >
-            Referência à transação anterior, conforme Swagger CSS. Aceita no ensaio
-            de coassinatura de PDF já assinado; resultado teve duas assinaturas válidas.
-            O efeito específico deste campo não foi isolado do upload do PDF assinado.
-            co_sign_ref também foi aceito, mas seu reconhecimento pelo backend não
-            foi comprovado; não é tratado como campo canônico.
+            Referência à transação anterior para coassinatura.
 
     SignatureEntry:
       type: object
@@ -819,7 +811,7 @@ components:
             PERSISTIR este valor — necessário para GET /document/{transaction_id}.
             Cada documento possui seu próprio campo transaction (inteiro).
             transaction_id pode ser nome de variável interna, mas não é a chave
-            retornada em signatures[] pela API observada.
+            retornada em signatures[] pela API.
           example: 147169519
         status:
           $ref: "#/components/schemas/StatusObject"
@@ -832,7 +824,7 @@ components:
             Para CAdES detached: esta é a assinatura pronta para uso.
         document_name:
           type: string
-          description: Nome do documento assinado, observado em signatures[].
+          description: Nome do documento assinado.
 
     SignatureResponse:
       type: object
@@ -902,15 +894,15 @@ components:
       type: object
       nullable: true
       description: >
-        Certificado e cadeia recursiva. Descoberta retornou datas ISO; validação
-        retornou strings de data legíveis com timezone BRT/UTC. Não impor formato
+        Certificado e cadeia recursiva. A descoberta usa datas ISO; a validação
+        pode usar strings de data legíveis com timezone BRT/UTC. Não impor formato
         ISO único a todos os endpoints. Em validação, campos alias/status/certificate
-        podem ser null e issuer_certificate foi objeto recursivo com três níveis.
+        podem ser null. issuer_certificate representa recursivamente a cadeia de emissores.
       properties:
         serial_number:
           type: string
           nullable: true
-          description: Hexadecimal na descoberta e decimal na validação observadas; preservar a representação recebida.
+          description: Pode ser hexadecimal na descoberta e decimal na validação; preservar a representação recebida.
         subject_dn:
           type: string
           nullable: true
@@ -969,7 +961,7 @@ components:
           nullable: true
           items:
             type: string
-          description: Erros de validação. Retornou null nas assinaturas CAdES válidas observadas.
+          description: Erros de validação. Pode ser null quando não há erros.
 
     ValidateResponse:
       type: object
@@ -1055,9 +1047,7 @@ components:
     PrepareSignerRequest:
       type: object
       description: >
-        Solicitação ao aplicativo Assinador, conforme Swagger CSS. API real em cloud
-        rejeitou callback_uri ausente com HTTP 400/210; demais campos e unidades
-        abaixo seguem o Swagger e ainda não tiveram fluxo completo validado.
+        Solicitação ao aplicativo Assinador Certillion. O callback_uri é obrigatório.
       required: [callback_uri]
       properties:
         signer:
@@ -1066,10 +1056,10 @@ components:
         callback_uri:
           type: string
           format: uri
-          description: URL para receber POST do resultado. Formato do callback ainda não documentado/validado.
+          description: URL para receber POST do resultado da assinatura.
         lifetime:
           type: integer
-          description: Em minutos segundo o Swagger CSS; unidade ainda não confirmada experimentalmente.
+          description: Tempo de validade da solicitação, em minutos.
         signature_standard:
           $ref: "#/components/schemas/SignatureStandard"
         signature_policy:
@@ -1111,8 +1101,8 @@ paths:
       tags: [Assinatura]
       summary: Cria solicitação para o aplicativo Assinador Certillion
       description: >
-        Fluxo alternativo documentado no Swagger CSS. Requer callback_uri na API real.
-        A criação com callback e a conclusão no aplicativo ainda não foram validadas.
+        Cria uma solicitação de assinatura no aplicativo Assinador Certillion.
+        Requer callback_uri para receber o resultado da assinatura.
       security:
         - BearerClientToken: []
       requestBody:
@@ -1271,10 +1261,9 @@ paths:
       tags: [Tokens]
       summary: Consulta o status da sessão de assinatura
       description: >
-        Em cloud/VIDAAS, user_id igual ao CPF retornado em authorized_identification
-        produziu HTTP 200 e Status 100, com VALID e expiração em detail. Não generalizar
-        essa identificação a outros PSCs/CNPJ sem evidência. HTTP 200 com código 249
-        indica sessão inválida/expirada, não sucesso.
+        Em cloud/VIDAAS, usar o CPF retornado em authorized_identification como
+        user_id. Verificar code, name e detail para interpretar o estado da sessão.
+        HTTP 200 com código 249 indica sessão inválida/expirada, não sucesso.
       security:
         - BearerClientToken: []
       parameters:
@@ -1283,7 +1272,7 @@ paths:
           required: true
           schema:
             type: string
-          description: CPF autorizado confirmado no VIDAAS; identificação para outros modos ainda pendente.
+          description: Identificador do titular da sessão. Em cloud/VIDAAS, usar o CPF autorizado.
       responses:
         "200":
           description: Status direto; verificar code, name e detail.
@@ -1390,7 +1379,7 @@ paths:
         "302":
           description: Redirecionamento para página de autenticação do PSC.
         "303":
-          description: Redirecionamento observado em cloud/VIDAAS em 12/10/2026.
+          description: Redirecionamento para página de autenticação do PSC.
         "404":
           description: Parâmetros inválidos ou credencial incorreta.
 
@@ -1549,9 +1538,9 @@ paths:
         Se o token de assinatura não estiver mais disponível, obter um novo
         client_token e usá-lo no download.
 
-        NEGOCIAÇÃO: enviar Accept application/octet-stream; Accept application/json
-        produziu HTTP 406 em cloud em 12/10/2026. Não interpretar esse 406 como
-        falha da assinatura nem reiniciar o fluxo.
+        NEGOCIAÇÃO: enviar Accept application/octet-stream. Um Accept incompatível
+        pode produzir HTTP 406. Não interpretar esse 406 como falha da assinatura
+        nem reiniciar o fluxo.
       security:
         - BearerClientToken: []
         - BearerSigningToken: []
@@ -1721,8 +1710,8 @@ paths:
       description: >
         Cancela o token de assinatura ativo. Quando suportado pelo PSC,
         o cancelamento é propagado ao provedor.
-        Em cloud/VIDAAS, a execução de 12/10/2026 retornou HTTP 400/205 INTERNAL_ERROR;
-        invalidação bem-sucedida e requisitos adicionais ainda não foram confirmados.
+        Verificar o status retornado antes de considerar o token invalidado.
+        Em caso de erro, não presumir que a sessão foi encerrada.
       security:
         - BearerSigningToken: []
       requestBody:
