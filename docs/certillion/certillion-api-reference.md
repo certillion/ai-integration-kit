@@ -4,7 +4,7 @@
 > Não contém informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 
 > Guia conceitual para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.3-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.4-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**

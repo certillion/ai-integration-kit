@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.3-beta | Linguagem: Ruby 3.0+
+> Versão: 0.4-beta | Linguagem: Ruby 3.0+
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 

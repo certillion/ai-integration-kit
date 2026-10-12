@@ -5,7 +5,7 @@ GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API Certillion de 
 ICP-Brasil** de forma rápida e correta — gerando código que já respeita o fluxo de autenticação,
 os padrões de assinatura, as regras de custo e os pontos de atenção da plataforma.
 
-> Versão: 0.3-beta · Documentação pública.
+> Versão: 0.4-beta · Documentação pública.
 
 ## Para que serve
 
@@ -118,4 +118,4 @@ Dúvidas durante a integração: https://certillion.com/fale-conosco-certillion/
 
 ---
 
-*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.3-beta.*
+*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.4-beta.*

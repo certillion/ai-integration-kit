@@ -6,7 +6,7 @@
 > time Certillion.
 
 > Guia de diagnóstico para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.3-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.4-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -363,4 +363,4 @@ function renderCertillionError(raw, httpStatus, container) {
 *Guia de troubleshooting baseado na documentação oficial Certillion, tutoriais, e-mail de
 integração e na experiência da equipe e-Sec. Lista canônica de códigos e mecânica de endpoints:
 `certillion-openapi.yaml`; resumo conceitual de erros: `certillion-api-reference.md` (Seção 9);
-regra de tratamento de erro: `certillion-skill.md` (Regra 13). Documento público — versão 0.3-beta.*
+regra de tratamento de erro: `certillion-skill.md` (Regra 13). Documento público — versão 0.4-beta.*

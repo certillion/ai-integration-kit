@@ -2,7 +2,7 @@ openapi: "3.0.3"
 
 info:
   title: Certillion API
-  version: "0.3-beta"
+  version: "0.4-beta"
   description: >
     Documento público — distribuível a clientes e parceiros integradores. Não contém
     informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.

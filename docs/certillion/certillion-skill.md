@@ -10,7 +10,7 @@ description: >
   PAdES, CAdES, XAdES, manager_id, manager_secret, scope/signature_session, lifetime ou duração
   de sessão (reaproveitar token / não reautenticar a cada documento), certificado local
   (A1/.pfx, A3, Assinador Certillion, cloud-ws), ou qualquer outro endpoint da API Certillion.
-version: "0.3-beta"
+version: "0.4-beta"
 language: pt-BR
 classification: público — distribuível a clientes e parceiros
 ---
