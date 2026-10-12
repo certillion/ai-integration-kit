@@ -110,21 +110,18 @@ function buildAuthorizeUrl(string $challenge, string $psc, string $redirectUri):
 <?php
 function getSigningToken(string $code, string $verifier, string $psc, string $redirectUri): array {
     global $CLIENT_ID, $CLIENT_SECRET;
-    $ch = curl_init(BASE_URL . '/oauth/token');
+    $ch = curl_init(BASE_URL . '/oauth/token?' . http_build_query(['psc' => $psc]));
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
         CURLOPT_POSTFIELDS => http_build_query([
-            'client_id' => $CLIENT_ID,
-            'client_secret' => $CLIENT_SECRET,
             'grant_type' => 'authorization_code',
             'code' => $code,
             'code_verifier' => $verifier,
             // manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
             'manager_id' => $CLIENT_ID,
             'manager_secret' => $CLIENT_SECRET,
-            'psc' => $psc,
             'redirect_uri' => $redirectUri,
         ]),
     ]);
@@ -190,7 +187,7 @@ function requestSignature(string $documentHash, string $signingToken): string {
     if (($sig['status']['code'] ?? null) !== 140) {
         throw new RuntimeException('assinatura inválida: ' . json_encode($sig['status'] ?? null));
     }
-    return $sig['transaction_id']; // R2: persistir
+    return (string) $sig['transaction']; // API: transaction inteiro; variável interna em string
 }
 ```
 
@@ -202,7 +199,7 @@ function downloadDocument(string $transactionId, string $token): string {
     $ch = curl_init(BASE_URL . '/oauth/document/' . $transactionId);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token],
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'Accept: application/octet-stream'],
     ]);
     $content = curl_exec($ch);
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);

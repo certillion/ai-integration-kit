@@ -129,19 +129,16 @@ String buildAuthorizeUrl(String challenge, String psc, String redirectUri) {
 ```java
 String getSigningToken(HttpClient http, String code, String verifier,
                        String psc, String redirectUri) throws Exception {
-    String body = "client_id=" + CLIENT_ID
-        + "&client_secret=" + CLIENT_SECRET
-        + "&grant_type=authorization_code"
+    String body = "grant_type=authorization_code"
         + "&code=" + code
         + "&code_verifier=" + verifier
         // manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
         + "&manager_id=" + CLIENT_ID
         + "&manager_secret=" + CLIENT_SECRET
-        + "&psc=" + psc
         + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
 
     HttpRequest req = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/oauth/token"))
+        .uri(URI.create(BASE_URL + "/oauth/token?psc=" + URLEncoder.encode(psc, StandardCharsets.UTF_8)))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .build();
@@ -215,7 +212,7 @@ String requestSignature(HttpClient http, String documentHash, String signingToke
     if (code == null || code != 140) {
         throw new RuntimeException("assinatura inválida: " + resp.body());
     }
-    return JsonUtil.getTransactionId(resp.body(), 0); // R2: persistir
+    return JsonUtil.getTransaction(resp.body(), 0); // helper: lê signatures[0].transaction e converte para String
 }
 ```
 
@@ -227,6 +224,7 @@ byte[] downloadDocument(HttpClient http, String transactionId, String token)
     HttpRequest req = HttpRequest.newBuilder()
         .uri(URI.create(BASE_URL + "/oauth/document/" + transactionId))
         .header("Authorization", "Bearer " + token)
+        .header("Accept", "application/octet-stream")
         .GET()
         .build();
 

@@ -104,7 +104,7 @@ Nunca encapsular upload + assinar + download em um único método. Persistir os 
 
 ```
 document_hash  ← retornado pelo POST /document (usar no POST /signature)
-transaction_id ← retornado pelo POST /signature (usar no GET /document/{id})
+transaction_id ← valor de signatures[n].transaction no POST /signature (usar no GET /document/{id})
 ```
 
 Em caso de falha, retentar **somente o passo que falhou**:
@@ -113,6 +113,10 @@ Em caso de falha, retentar **somente o passo que falhou**:
 - Download falhou → repetir GET /document/{transaction_id}
 
 Nunca reiniciar o fluxo do início se apenas o download falhou.
+
+`transaction_id` acima é nome de variável interna: a chave JSON retornada é
+**`transaction`**, inteiro. No download, enviar `Accept: application/octet-stream`;
+`Accept: application/json` produziu HTTP 406 nas chamadas observadas.
 
 ### R3 — Em lotes, retomar a partir do item que falhou
 
@@ -228,18 +232,22 @@ As credenciais que a e-Sec envia por e-mail são **`client_id` e `client_secret`
 - `manager_id` ← valor do `client_id`
 - `manager_secret` ← valor do `client_secret`
 
-**Não omita** esses parâmetros onde a API os exige — o erro comum de código gerado por IA é
-"deduplicar" e remover `manager_id` por parecer igual a `client_id`, fazendo o `/token` falhar
-com `invalid_grant`.
+**Não omita `manager_id`/`manager_secret`** no fluxo intermediado pelo Certillion.
+Em `/oauth/token`, não é necessário duplicar esses valores em `client_id`/`client_secret`.
+Esse segundo par identifica credenciais próprias junto ao PSC no modo de conexão direta,
+conforme o Swagger CSS. Essa modalidade não foi validada na bateria de integração.
 
 | Chamada | Parâmetros de credencial | Valor a enviar |
 |---------|--------------------------|----------------|
 | `/oauth/client_token`, `/oauth/find-psc-accounts` | `client_id`, `client_secret` | suas credenciais |
 | `GET /oauth/authorize` | `manager_id` | valor do `client_id` |
-| `POST /oauth/token` | `client_id`, `client_secret`, `manager_id`, `manager_secret` | `manager_id` = `client_id`, `manager_secret` = `client_secret` |
+| `POST /oauth/token` (intermediado) | `manager_id`, `manager_secret` | valores das credenciais recebidas da Certillion |
+| `/oauth/token` (conexão direta com PSC) | além do par manager, `client_id`, `client_secret` | credenciais próprias junto ao PSC; confirmar configuração do provedor |
 
 O nome `certillion_manager_id` **não existe** — é `manager_id`. Os exemplos por linguagem já enviam
-os parâmetros corretos; não os remova ao gerar ou refatorar código.
+o par manager no fluxo intermediado. A execução de 12/10/2026, em cloud com VIDAAS,
+confirmou HTTP 200 e token `signature_session` tanto com manager-only quanto com
+duplicação do par client: a duplicação não é obrigatória nesse fluxo.
 
 > Fonte dos nomes `manager_id`/`manager_secret`: documentação oficial da API —
 > https://certillion.com/certillion-api/api-certillion-assinatura-digital-documentacao/
@@ -314,7 +322,7 @@ R6 expires_in, R9 tamanho/transferência e R12 padrão de assinatura).
 | Timeout no lote | Lote muito grande | Reduzir para 5–10 itens por chamada |
 | BirdID falha ao assinar mesmo com certificado válido | Conta sem créditos no PSC (retorna `218 USERS_EXCEEDED_MAXIMUM_ALLOWED` ou `212 ACCOUNT_NO_CREDIT`) | Orientar o usuário a verificar o saldo/contratação de créditos junto ao BirdID; tratar esses códigos com mensagem específica (ver R13) |
 | Usuário final frustrado, sem saber o que deu errado | Sistema mostra erro genérico e descarta o retorno do Certillion | Tratar o erro conforme R13: mensagem específica + opção de ver o JSON original |
-| `/token` falha logo após receber o `code` (`invalid_grant`/`invalid_client`) | `manager_id`/`manager_secret` omitidos ou diferentes de `client_id`/`client_secret`; ou `redirect_uri` diferente do enviado no `/authorize` | Enviar `manager_id`/`manager_secret` (= `client_*`) e usar o mesmo `redirect_uri` nas duas chamadas (R14) |
+| `/token` falha logo após receber o `code` (`invalid_grant`/`invalid_client`) | Credenciais manager ausentes/incorretas, code consumido/expirado, verifier ou redirect divergente | Enviar o par manager com as credenciais Certillion; não duplicar o par client no fluxo intermediado (R14) |
 | Usuário precisa reautenticar (VIDAAS etc.) a cada documento | Scope não é `signature_session`, ou o token não é reutilizado, ou `lifetime` curto | Usar `signature_session` + `lifetime` desejado e reutilizar o `access_token` (R15) |
 | `404` ao usar certificado local | Servidor errado para `CERTILLION_SIGNER` | Usar `cloud-ws.certillion.com` com `psc=CERTILLION_SIGNER` (R16) |
 | Certificado local não assina / não encontrado | App Assinador Certillion ausente na máquina do usuário | Instruir o usuário final a instalar o Assinador Certillion (R16) |
@@ -335,6 +343,6 @@ Antes de gerar qualquer código de integração, confirmar internamente:
 - [ ] QR Code e rodapé são adicionados antes do upload (R10)
 - [ ] Credenciais estão em variáveis de ambiente (R11)
 - [ ] O erro do Certillion é preservado e exibido em camadas: mensagem específica (derivada do `status.code`) + "ver detalhes" com o JSON original e copiar/salvar (R13)
-- [ ] `manager_id`/`manager_secret` são enviados além de `client_id`/`client_secret` — `/authorize` leva `manager_id`; `/token` leva os dois pares (R14)
+- [ ] `/authorize` leva `manager_id`; `/token` leva `manager_id`/`manager_secret` com as credenciais Certillion; o par client fica reservado à conexão direta com PSC (R14)
 - [ ] Se o usuário assina vários documentos: `signature_session` + persistência/reutilização do `access_token` (R15)
 - [ ] Se usa certificado local: `CERTILLION_SIGNER` + `cloud-ws` e o usuário é orientado a instalar o Assinador Certillion (R16)

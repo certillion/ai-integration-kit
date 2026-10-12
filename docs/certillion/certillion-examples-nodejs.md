@@ -105,19 +105,16 @@ async function getSigningToken(
   code: string, verifier: string, psc: string, redirectUri: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
     grant_type: 'authorization_code',
     code,
     code_verifier: verifier,
     // manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
     manager_id: CLIENT_ID,
     manager_secret: CLIENT_SECRET,
-    psc,
     redirect_uri: redirectUri,
   });
 
-  const res = await fetch(`${BASE_URL}/oauth/token`, {
+  const res = await fetch(`${BASE_URL}/oauth/token?${new URLSearchParams({ psc })}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params,
@@ -171,7 +168,7 @@ async function requestSignature(documentHash: string, signingToken: string): Pro
   if (sig?.status?.code !== 140) {
     throw new Error(`assinatura inválida: ${JSON.stringify(sig?.status)}`);
   }
-  return sig.transaction_id; // R2: persistir
+  return String(sig.transaction); // API: transaction inteiro; variável interna em string
 }
 ```
 
@@ -180,7 +177,7 @@ async function requestSignature(documentHash: string, signingToken: string): Pro
 ```typescript
 async function downloadDocument(transactionId: string, token: string): Promise<Buffer> {
   const res = await fetch(`${BASE_URL}/oauth/document/${transactionId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/octet-stream' },
   });
   if (!res.ok) throw new Error(`download falhou: HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());

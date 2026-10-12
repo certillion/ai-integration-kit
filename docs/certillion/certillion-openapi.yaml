@@ -88,6 +88,7 @@ components:
           description: >
             Código de status interno do Certillion. Valores relevantes:
             100 = REQUEST_OK (sucesso),
+            200 = OK (sucesso de upload observado em cloud em 12/10/2026),
             140 = SIGNATURE_VALID (assinatura válida — verificar por entrada em lotes),
             249 = TOKEN_VALIDITY_INVALID (token expirado — reiniciar /authorize + /token),
             250 = INVALID_ACCESS_TOKEN,
@@ -172,15 +173,8 @@ components:
         A lista completa e atualizada é retornada por GET /oauth/psc-info.
         Além dos PSCs em nuvem, existe o CERTILLION_SIGNER para certificados
         locais (A1/A3) — nesse caso usar obrigatoriamente o endpoint cloud-ws.
-      enum:
-        - VIDAAS
-        - SAFEID
-        - REMOTEID
-        - NEOID
-        - VAULTID
-        - BIRDID
-        - DSCLOUD
-        - CERTILLION_SIGNER
+      # Sem enum fechado: /psc-info também retornou SERPROID, SYN e GOLDID
+      # em 12/10/2026. A lista do servidor é a fonte para seleção de provedores.
       example: "VIDAAS"
 
     FindPscAccountsRequest:
@@ -208,28 +202,35 @@ components:
           example: "00000000000"
 
     FindPscAccountsResponse:
-      type: array
+      type: object
       description: >
         Lista com resultado de cada PSC consultado.
         status="S" indica que o usuário possui certificado naquele PSC.
         status="N" indica ausência. Se todos retornarem "N", o usuário só pode
         assinar via CERTILLION_SIGNER com certificado local.
-      items:
-        type: object
-        properties:
-          psc:
-            $ref: "#/components/schemas/PSCIdentifier"
-          slot_alias:
-            type: string
-            description: Identificador do slot do usuário no PSC.
-          label:
-            type: string
-            description: Descrição associada ao slot.
-          status:
-            type: string
-            enum: [S, N]
-            description: "S = possui certificado; N = não possui."
-            example: "S"
+      properties:
+        pscs:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserDiscoveryResponse"
+
+    UserDiscoveryResponse:
+      type: object
+      properties:
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              slot_alias:
+                type: string
+              label:
+                type: string
+        status:
+          type: string
+          enum: [S, N]
 
     UserDiscoveryRequest:
       type: object
@@ -279,21 +280,18 @@ components:
         Troca o code recebido no callback por um access_token de assinatura.
         Enviado como application/x-www-form-urlencoded.
       required:
-        - client_id
-        - client_secret
         - grant_type
         - code
         - code_verifier
         - manager_id
         - manager_secret
-        - psc
       properties:
         client_id:
           type: string
-          description: Identificador da aplicação (mesmo usado no /authorize).
+          description: Opcional; identificação própria da aplicação junto ao PSC no modo de conexão direta.
         client_secret:
           type: string
-          description: Segredo da aplicação. Manter em variável de ambiente.
+          description: Opcional; segredo próprio junto ao PSC no modo de conexão direta. Não duplicar as credenciais manager no fluxo intermediado.
         grant_type:
           type: string
           enum: [authorization_code]
@@ -324,7 +322,9 @@ components:
             client_secret (manager_secret = client_secret). Não omitir.
         psc:
           $ref: "#/components/schemas/PSCIdentifier"
-          description: Mesmo PSC informado no /authorize.
+          description: >
+            Mesmo PSC informado no /authorize. O Swagger CSS documenta o parâmetro na
+            query de /token; cloud/VIDAAS também aceitou este campo no body em 12/10/2026.
         redirect_uri:
           type: string
           description: >
@@ -459,7 +459,10 @@ components:
         Resposta ao upload de documento.
         O campo document_hash é o identificador do documento na plataforma.
         PERSISTIR este valor — será necessário em /signature.
-        NÃO interpretar como hash criptográfico do arquivo; tratar como ID opaco.
+        Usar o valor retornado sem recalculá-lo para referenciar o upload.
+        Em cloud em 12/10/2026, seu conteúdo decodificado era o SHA-256 do arquivo,
+        codificado em Base64URL sem padding. Isso não substitui o upload necessário
+        aos fluxos que dependem do arquivo armazenado.
         ATENÇÃO DE CUSTO: documentos ficam disponíveis por no mínimo 24h e no máximo
         48h. Após isso são apagados. Se a assinatura não for solicitada neste intervalo,
         um novo upload será necessário — gerando nova cobrança de transferência.
@@ -468,8 +471,7 @@ components:
           type: string
           description: >
             Identificador do documento no Certillion. Usar no campo hashes[].hash
-            da requisição de /signature. Tratar como ID opaco — não usar como hash
-            criptográfico do arquivo.
+            da requisição de /signature. Persistir o retorno exato do upload.
           example: "LaMjHB1oJjHlMtAcC9d4Fg=="
         status:
           $ref: "#/components/schemas/StatusObject"
@@ -519,8 +521,13 @@ components:
         AD_RC: Referência Completa.
         AD_RA: Referência para Arquivamento. Mais completa, maior tamanho.
 
+        ADOBE_PDF / ADOBE_PDF_RT: requisições aceitas em cloud/VIDAAS em 12/10/2026.
+          Ambas retornaram o mesmo policy_id do PAdES básico. Nos PDFs inspecionados
+          da terceira execução não foram encontrados atributos CMS de timestamp
+          nem DocTimeStamp. Não presumir carimbo de tempo pelo nome da política.
+
         Default: AD_RB
-      enum: [AD_RB, AD_RT, AD_RV, AD_RC, AD_RA]
+      enum: [AD_RB, AD_RT, AD_RV, AD_RC, AD_RA, ADOBE_PDF, ADOBE_PDF_RT]
       default: AD_RB
       example: "AD_RB"
 
@@ -552,9 +559,12 @@ components:
           example: "LaMjHB1oJjHlMtAcC9d4Fg=="
         hash_algorithm:
           type: string
-          description: Algoritmo de hash. Default SHA-256.
-          default: SHA-256
-          example: "SHA-256"
+          description: >
+            OID do algoritmo: SHA-256 = 2.16.840.1.101.3.4.2.1;
+            SHA-512 = 2.16.840.1.101.3.4.2.3 (Swagger CSS).
+            Cloud/VIDAAS confirmou o OID SHA-256 e rejeitou o texto SHA-256
+            com HTTP 400/PSC_ERROR em 12/10/2026. Não enviar o nome textual aqui.
+          example: "2.16.840.1.101.3.4.2.1"
         signature_standard_options:
           $ref: "#/components/schemas/SignatureStandardOptions"
 
@@ -590,6 +600,10 @@ components:
         A assinatura visível é equivalente ao carimbo do médico/profissional.
         Tanto a assinatura visível quanto a invisível possuem o mesmo valor legal.
         A visível é culturalmente esperada por usuários finais no Brasil.
+        Corpos fracionários foram aceitos, mas os PDFs inspecionados preservaram
+        somente valores inteiros: os dois ensaios produziram o mesmo Rect.
+        Usar inteiros, conforme o Swagger. Com position_on_page omitido e página
+        595x842 sem rotação, distance_y=50 posicionou o campo a 50 da borda superior.
       properties:
         page_number:
           type: integer
@@ -597,22 +611,22 @@ components:
           default: 1
           example: 1
         distance_x:
-          type: number
+          type: integer
           description: Posição no eixo X a partir da margem esquerda. Default 0.
           default: 0
           example: 50
         distance_y:
-          type: number
-          description: Posição no eixo Y a partir da margem inferior. Default 0.
+          type: integer
+          description: Deslocamento vertical. No ensaio sem position_on_page, mediu-se a partir da margem superior. Não assumir sempre origem inferior.
           default: 0
           example: 50
         width:
-          type: number
+          type: integer
           description: Largura do campo de assinatura em pontos. Default 200.
           default: 200
           example: 200
         height:
-          type: number
+          type: integer
           description: Altura do campo de assinatura em pontos. Default 100.
           default: 100
           example: 100
@@ -689,15 +703,16 @@ components:
             Nome do atributo ID (ex.: "id", "Id", "ID").
             Mutuamente exclusivo com elements_id.
         elements_id:
-          type: array
-          items:
-            type: string
-          description: Lista de IDs dos elementos a serem assinados.
+          type: string
+          description: Identificador do elemento XML. Exemplo confirmado item-1; formato de múltiplos IDs ainda não validado. Arrays são rejeitados na desserialização.
+          example: "item-1"
         elements_name:
-          type: array
-          items:
-            type: string
-          description: Lista de nomes de elementos. Usar junto com attribute_id_name.
+          type: string
+          description: >
+            Nome do elemento XML. Arrays são rejeitados. No ensaio com item e
+            attribute_id_name Id a assinatura válida referenciou o documento inteiro
+            (URI vazia), não #item-1. Não presumir seleção por ID com este campo.
+          example: "item"
         signature_tag_position:
           type: string
           enum: [INSIDE, JUST_AFTER, APPENDED]
@@ -739,11 +754,11 @@ components:
         LOTES: preferir lotes de até 5–10 documentos. Lotes maiores aumentam o
         risco de timeout HTTP com perda de toda a requisição.
       required:
-        - signature_standard
         - hashes
       properties:
         signature_standard:
           $ref: "#/components/schemas/SignatureStandard"
+          description: Omissão confirmou CMS/CAdES attached no arquivo da terceira execução em cloud/VIDAAS. Informar explicitamente o padrão desejado.
         signature_policy:
           $ref: "#/components/schemas/SignaturePolicy"
         pki_name:
@@ -773,11 +788,15 @@ components:
           description: >
             Alias do certificado a usar na assinatura. Opcional — se omitido,
             o Certillion usa o certificado padrão autorizado.
-        co_sign_ref:
-          type: string
+        re_signature_transaction_id:
+          type: integer
+          format: int64
           description: >
-            transaction_id de uma assinatura anterior para co-assinar o mesmo
-            documento. O campo hashes deve conter o hash do documento já assinado.
+            Referência à transação anterior, conforme Swagger CSS. Aceita no ensaio
+            de coassinatura de PDF já assinado; resultado teve duas assinaturas válidas.
+            O efeito específico deste campo não foi isolado do upload do PDF assinado.
+            co_sign_ref também foi aceito, mas seu reconhecimento pelo backend não
+            foi comprovado; não é tratado como campo canônico.
 
     SignatureEntry:
       type: object
@@ -792,13 +811,16 @@ components:
           type: string
           description: Mesmo id informado na entrada do hashes[]. Usar para correlacionar.
           example: "1"
-        transaction_id:
-          type: string
+        transaction:
+          type: integer
+          format: int64
           description: >
             Identificador da transação de assinatura.
             PERSISTIR este valor — necessário para GET /document/{transaction_id}.
-            Cada documento assinado possui seu próprio transaction_id.
-          example: "147169519"
+            Cada documento possui seu próprio campo transaction (inteiro).
+            transaction_id pode ser nome de variável interna, mas não é a chave
+            retornada em signatures[] pela API observada.
+          example: 147169519
         status:
           $ref: "#/components/schemas/StatusObject"
         raw_signature:
@@ -808,12 +830,18 @@ components:
             Para PAdES: parte da estrutura interna — o documento completo é obtido
             via GET /document/{transaction_id}.
             Para CAdES detached: esta é a assinatura pronta para uso.
+        document_name:
+          type: string
+          description: Nome do documento assinado, observado em signatures[].
 
     SignatureResponse:
       type: object
       properties:
         status:
           $ref: "#/components/schemas/StatusObject"
+        usage_alert:
+          type: string
+          nullable: true
         signatures:
           type: array
           description: >
@@ -822,21 +850,7 @@ components:
           items:
             $ref: "#/components/schemas/SignatureEntry"
         signer_certificate:
-          type: object
-          description: Detalhes do certificado utilizado nas assinaturas.
-          properties:
-            serial_number:
-              type: string
-            subject_dn:
-              type: string
-            issuer_dn:
-              type: string
-            not_before:
-              type: string
-              format: date-time
-            not_after:
-              type: string
-              format: date-time
+          $ref: "#/components/schemas/CertificateInfo"
         signer_identifier:
           type: string
           description: CPF ou CNPJ do usuário que assinou.
@@ -874,13 +888,98 @@ components:
         document_hash:
           type: string
           description: >
-            Para CAdES detached: hash SHA-256 do arquivo original.
-            Alternativa ao content quando o arquivo está no servidor.
+            Para CAdES detached: referência do arquivo original já enviado ao servidor.
+            Em cloud/VIDAAS foram aceitos o retorno Base64URL do upload e seu SHA-256
+            equivalente em Base64 padrão. Ambos representavam o mesmo digest de arquivo
+            já armazenado; isso não comprova validação sem o original no servidor.
         pki_name:
           type: string
           description: PKI a usar na validação. Default ICP_BR.
           default: ICP_BR
           example: "ICP_BR"
+
+    CertificateInfo:
+      type: object
+      nullable: true
+      description: >
+        Certificado e cadeia recursiva. Descoberta retornou datas ISO; validação
+        retornou strings de data legíveis com timezone BRT/UTC. Não impor formato
+        ISO único a todos os endpoints. Em validação, campos alias/status/certificate
+        podem ser null e issuer_certificate foi objeto recursivo com três níveis.
+      properties:
+        serial_number:
+          type: string
+          nullable: true
+          description: Hexadecimal na descoberta e decimal na validação observadas; preservar a representação recebida.
+        subject_dn:
+          type: string
+          nullable: true
+        issuer_dn:
+          type: string
+          nullable: true
+        not_before:
+          type: string
+          nullable: true
+        not_after:
+          type: string
+          nullable: true
+        alias:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        certificate:
+          type: string
+          nullable: true
+        issuer_certificate:
+          $ref: "#/components/schemas/CertificateInfo"
+
+    CertificateDiscoveryResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertificateInfo"
+
+    SignatureValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: Resultado de validade desta assinatura; inspecionar cada entrada.
+        signing_time:
+          type: string
+        signer_certificate:
+          $ref: "#/components/schemas/CertificateInfo"
+        policy_id:
+          type: string
+          nullable: true
+          description: Pode ser null em validações PAdES válidas; não confundir com assinatura inválida.
+        policy_url:
+          type: string
+          nullable: true
+        legal_identifier:
+          type: string
+        error:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Erros de validação. Retornou null nas assinaturas CAdES válidas observadas.
+
+    ValidateResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        signatures:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignatureValidationResult"
 
     # ── TOKEN COMMAND ─────────────────────────────────────────────────────────
 
@@ -953,11 +1052,84 @@ components:
           description: E-mail para contato em caso de indisponibilidade ou mudança de versão.
           example: "suporte@seudominio.com.br"
 
+    PrepareSignerRequest:
+      type: object
+      description: >
+        Solicitação ao aplicativo Assinador, conforme Swagger CSS. API real em cloud
+        rejeitou callback_uri ausente com HTTP 400/210; demais campos e unidades
+        abaixo seguem o Swagger e ainda não tiveram fluxo completo validado.
+      required: [callback_uri]
+      properties:
+        signer:
+          type: string
+          description: CPF/CNPJ do titular que realizará a assinatura.
+        callback_uri:
+          type: string
+          format: uri
+          description: URL para receber POST do resultado. Formato do callback ainda não documentado/validado.
+        lifetime:
+          type: integer
+          description: Em minutos segundo o Swagger CSS; unidade ainda não confirmada experimentalmente.
+        signature_standard:
+          $ref: "#/components/schemas/SignatureStandard"
+        signature_policy:
+          $ref: "#/components/schemas/SignaturePolicy"
+        pki_name:
+          type: string
+        detached:
+          type: boolean
+        hashes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HashEntry"
+
+    PrepareSignerResponse:
+      type: object
+      properties:
+        registered_link:
+          type: string
+          nullable: true
+        expires_in:
+          type: integer
+          nullable: true
+        transaction_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Campo desta resposta; não confundir com signatures[].transaction de /signature.
+        status:
+          $ref: "#/components/schemas/StatusObject"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────────────────────────────────────────
 
 paths:
+
+  /oauth/prepare_signer:
+    post:
+      tags: [Assinatura]
+      summary: Cria solicitação para o aplicativo Assinador Certillion
+      description: >
+        Fluxo alternativo documentado no Swagger CSS. Requer callback_uri na API real.
+        A criação com callback e a conclusão no aplicativo ainda não foram validadas.
+      security:
+        - BearerClientToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareSignerRequest"
+      responses:
+        "200":
+          description: Link/ID da solicitação, conforme Swagger CSS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareSignerResponse"
+        "400":
+          description: Requisição inválida; callback ausente retornou 210 BAD_REQUEST.
 
   /oauth/client_token:
     post:
@@ -1001,10 +1173,14 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PSCIdentifier"
-                example: ["VIDAAS", "SAFEID", "REMOTEID", "NEOID", "VAULTID", "BIRDID", "DSCLOUD"]
+                type: object
+                properties:
+                  pscs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PSCIdentifier"
+                example:
+                  pscs: ["BIRDID", "DSCLOUD", "REMOTEID", "SAFEID", "SERPROID", "SYN", "VIDAAS", "GOLDID"]
 
   /oauth/find-psc-accounts:
     post:
@@ -1053,17 +1229,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  psc:
-                    $ref: "#/components/schemas/PSCIdentifier"
-                  slot_alias:
-                    type: string
-                  label:
-                    type: string
-                  status:
-                    type: string
-                    enum: [S, N]
+                $ref: "#/components/schemas/UserDiscoveryResponse"
         "400":
           description: PSC desabilitado ou inválido.
         "401":
@@ -1091,28 +1257,40 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    $ref: "#/components/schemas/StatusObject"
-                  certificates:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        serial_number: { type: string }
-                        subject_dn:    { type: string }
-                        issuer_dn:     { type: string }
-                        not_before:    { type: string, format: date-time }
-                        not_after:     { type: string, format: date-time }
-                        alias:         { type: string }
-                        status:        { type: string }
-                        certificate:   { type: string }
-                        issuer_certificate: { type: string }
+                $ref: "#/components/schemas/CertificateDiscoveryResponse"
         "401":
           description: Token inválido, expirado ou limite de acessos ao PSC esgotado.
         "404":
           description: Nenhum certificado no slot ou alias inválido.
+
+  /oauth/certificate-discovery:
+    $ref: "#/paths/~1certificate-discovery"
+
+  /oauth/token/{user_id}:
+    get:
+      tags: [Tokens]
+      summary: Consulta o status da sessão de assinatura
+      description: >
+        Em cloud/VIDAAS, user_id igual ao CPF retornado em authorized_identification
+        produziu HTTP 200 e Status 100, com VALID e expiração em detail. Não generalizar
+        essa identificação a outros PSCs/CNPJ sem evidência. HTTP 200 com código 249
+        indica sessão inválida/expirada, não sucesso.
+      security:
+        - BearerClientToken: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: CPF autorizado confirmado no VIDAAS; identificação para outros modos ainda pendente.
+      responses:
+        "200":
+          description: Status direto; verificar code, name e detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusObject"
 
   /oauth/authorize:
     get:
@@ -1211,6 +1389,8 @@ paths:
       responses:
         "302":
           description: Redirecionamento para página de autenticação do PSC.
+        "303":
+          description: Redirecionamento observado em cloud/VIDAAS em 12/10/2026.
         "404":
           description: Parâmetros inválidos ou credencial incorreta.
 
@@ -1224,6 +1404,13 @@ paths:
         assinaturas em nome do usuário.
 
         Após este passo, authorized_identification revela o CPF/CNPJ do usuário.
+      parameters:
+        - name: psc
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PSCIdentifier"
+          description: Mesmo PSC do authorize. Localização documentada pelo Swagger CSS e confirmada em cloud/VIDAAS.
       requestBody:
         required: true
         content:
@@ -1361,6 +1548,10 @@ paths:
         AUTORIZAÇÃO: aceita tanto BearerClientToken quanto BearerSigningToken.
         Se o token de assinatura não estiver mais disponível, obter um novo
         client_token e usá-lo no download.
+
+        NEGOCIAÇÃO: enviar Accept application/octet-stream; Accept application/json
+        produziu HTTP 406 em cloud em 12/10/2026. Não interpretar esse 406 como
+        falha da assinatura nem reiniciar o fluxo.
       security:
         - BearerClientToken: []
         - BearerSigningToken: []
@@ -1369,10 +1560,12 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
           description: >
-            transaction_id retornado por POST /signature para o documento desejado.
-          example: "147169519"
+            Valor de signatures[n].transaction retornado por POST /signature.
+            O nome transaction_id neste path é apenas o rótulo do parâmetro da URL.
+          example: 147169519
       responses:
         "200":
           description: >
@@ -1390,6 +1583,8 @@ paths:
           description: Token inválido ou expirado.
         "404":
           description: transaction_id inválido, expirado ou pertencente a outra empresa.
+        "406":
+          description: Accept incompatível com o retorno binário; corrigir o header sem reassinar.
         "500":
           description: Falha interna.
 
@@ -1513,10 +1708,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    $ref: "#/components/schemas/StatusObject"
+                $ref: "#/components/schemas/ValidateResponse"
         "400":
           description: Assinatura inválida, cadeia incompleta ou formato não suportado.
         "401":
@@ -1529,6 +1721,8 @@ paths:
       description: >
         Cancela o token de assinatura ativo. Quando suportado pelo PSC,
         o cancelamento é propagado ao provedor.
+        Em cloud/VIDAAS, a execução de 12/10/2026 retornou HTTP 400/205 INTERNAL_ERROR;
+        invalidação bem-sucedida e requisitos adicionais ainda não foram confirmados.
       security:
         - BearerSigningToken: []
       requestBody:

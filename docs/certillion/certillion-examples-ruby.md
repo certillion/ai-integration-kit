@@ -100,17 +100,14 @@ end
 
 ```ruby
 def get_signing_token(code, verifier, psc, redirect_uri)
-  uri = URI("#{BASE_URL}/oauth/token")
+  uri = URI("#{BASE_URL}/oauth/token?#{URI.encode_www_form(psc: psc)}")
   res = Net::HTTP.post_form(uri, {
-    'client_id' => CLIENT_ID,
-    'client_secret' => CLIENT_SECRET,
     'grant_type' => 'authorization_code',
     'code' => code,
     'code_verifier' => verifier,
     # manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
     'manager_id' => CLIENT_ID,
     'manager_secret' => CLIENT_SECRET,
-    'psc' => psc,
     'redirect_uri' => redirect_uri
   })
   data = JSON.parse(res.body)
@@ -172,7 +169,7 @@ def request_signature(document_hash, signing_token)
   unless sig.dig('status', 'code') == 140
     raise "assinatura inválida: #{sig['status']}"
   end
-  sig['transaction_id'] # R2: persistir
+  sig['transaction'].to_s # API: transaction inteiro; variável interna em string
 end
 ```
 
@@ -183,6 +180,7 @@ def download_document(transaction_id, token)
   uri = URI("#{BASE_URL}/oauth/document/#{transaction_id}")
   req = Net::HTTP::Get.new(uri)
   req['Authorization'] = "Bearer #{token}"
+  req['Accept'] = 'application/octet-stream'
 
   res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
   unless res.is_a?(Net::HTTPSuccess)

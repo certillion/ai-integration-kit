@@ -19,6 +19,7 @@
 > Antigravity) está no **README.md** do repositório.
 > Em caso de divergência sobre um campo ou tipo, o YAML prevalece.
 
+
 ---
 
 ## Índice
@@ -209,7 +210,7 @@ O fluxo de assinatura é **o mesmo** para qualquer opção escolhida — muda ap
 
 > Parâmetros e respostas de cada passo: ver `certillion-openapi.yaml`.
 
-> **Parâmetros de credencial — mapeamento:** as credenciais enviadas por e-mail são `client_id`/`client_secret`. A documentação oficial da API usa, em `/authorize` e `/token`, os nomes de parâmetro `manager_id`/`manager_secret`: `manager_id` recebe o valor do `client_id` e `manager_secret`, o do `client_secret`. O `/authorize` leva `manager_id`; o `/token` leva `client_id`, `client_secret`, `manager_id` e `manager_secret`. Não omitir. Ver R14 da skill.
+> **Parâmetros de credencial — mapeamento:** as credenciais recebidas da Certillion são usadas como `client_id`/`client_secret` em `/client_token`, e como `manager_id`/`manager_secret` no fluxo OAuth intermediado. `/authorize` leva `manager_id`; `/token` leva o par manager, sem exigir duplicação no par client. No modo de conexão direta, `client_id`/`client_secret` em `/token` identificam as credenciais próprias junto ao PSC. O fluxo intermediado manager-only foi confirmado em cloud/VIDAAS em 12/10/2026. Ver R14 da skill.
 
 ---
 

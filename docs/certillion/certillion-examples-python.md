@@ -108,17 +108,15 @@ def build_authorize_url(challenge: str, psc: str, redirect_uri: str) -> str:
 def get_signing_token(code: str, verifier: str, psc: str, redirect_uri: str):
     resp = requests.post(
         f'{BASE_URL}/oauth/token',
+        params={'psc': psc},
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
         data={
-            'client_id': CLIENT_ID,
-            'client_secret': CLIENT_SECRET,
             'grant_type': 'authorization_code',
             'code': code,
             'code_verifier': verifier,
             # manager_id/manager_secret: nomes de parâmetro da API (doc oficial); o valor é o seu client_id/client_secret. Não remover.
             'manager_id': CLIENT_ID,
             'manager_secret': CLIENT_SECRET,
-            'psc': psc,
             'redirect_uri': redirect_uri,
         },
     )
@@ -166,7 +164,7 @@ def request_signature(document_hash: str, signing_token: str) -> str:
     # R4: verificar status 140 (SIGNATURE_VALID) por entrada
     if sig.get('status', {}).get('code') != 140:
         raise RuntimeError(f'assinatura inválida: {sig.get("status")}')
-    return sig['transaction_id']  # R2: persistir
+    return str(sig['transaction'])  # API: transaction inteiro; variável interna em string
 ```
 
 ## Passo 6 — Download do documento assinado
@@ -175,7 +173,7 @@ def request_signature(document_hash: str, signing_token: str) -> str:
 def download_document(transaction_id: str, token: str) -> bytes:
     resp = requests.get(
         f'{BASE_URL}/oauth/document/{transaction_id}',
-        headers={'Authorization': f'Bearer {token}'},
+        headers={'Authorization': f'Bearer {token}', 'Accept': 'application/octet-stream'},
     )
     if not resp.ok:
         raise RuntimeError(f'download falhou: HTTP {resp.status_code}')

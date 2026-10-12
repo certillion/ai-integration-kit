@@ -134,10 +134,11 @@ Antes de abrir suporte, identifique o passo e tente o auto-fix. A lista completa
 |-------|----------------|------------------|--------------------------|
 | **(1) `POST /oauth/client_token`** | `209 BAD_AUTHENTICATION` ou `404` | Credencial errada; ambiente trocado; servidor errado; chave de teste expirada (90 dias) | Conferir `CLIENT_ID`/`CLIENT_SECRET` em variável de ambiente, `CERTILLION_ENV` e servidor base |
 | **(3) `GET /oauth/authorize`** | `404` (parâmetros/credencial); navegador não volta | Falta `response_type`/`code_challenge`/`code_challenge_method`; **`manager_id` omitido** (valor = CLIENT_ID); `psc` inválido | Conferir parâmetros obrigatórios — em especial enviar `manager_id` (= CLIENT_ID) —, o PKCE e o `psc` |
-| **(4) `POST /oauth/token`** | `400 invalid_grant` / `invalid_client` **após** receber o `code` | `code` expirado/reutilizado; `code_verifier` ≠ par do `code_challenge`; `redirect_uri` diferente do enviado no `/authorize`; **`manager_id`/`manager_secret` omitidos** ou ≠ `client_id`/`client_secret`; `psc` diferente do `/authorize` | Refazer o fluxo com PKCE novo; trocar o `code` imediatamente; usar `redirect_uri` **idêntico** ao do `/authorize` (não precisa cadastrar); enviar `manager_id` **e** `manager_secret` (= `client_*`) **além** de `client_id`/`client_secret` |
+| **(4) `POST /oauth/token`** | `400 invalid_grant` / `invalid_client` **após** receber o `code` | `code` expirado/reutilizado; verifier divergente; callback diferente; credenciais manager ausentes/incorretas; PSC divergente | Usar PKCE e callback consistentes, enviar o par manager com as credenciais Certillion. No fluxo intermediado, não é obrigatório duplicar o par client; este identifica credenciais próprias junto ao PSC no modo direto |
 | **(2) `POST /oauth/document`** | Upload rejeitado; `713 WRONG_DOCUMENT_TYPE` | Em **teste**, arquivo > 100 KB (limite rígido); tipo incompatível com o padrão | Conferir tamanho (teste) e o `signature_standard` vs. tipo do arquivo |
 | **(5) `POST /oauth/signature`** | `250 INVALID_ACCESS_TOKEN` / `401`; `249`; `212`/`218`; `223`; `301`; `400`; `6xx` | Uso do **token errado** (precisa ser o de assinatura, não o de sistema); sessão expirada; crédito do PSC; certificado | Usar o token de `/oauth/token`; tratar expiração (re-autorizar passos 3–4); backoff em `301`/rate limit |
 | **(6) `GET /oauth/document/{id}`** | `711 DOCUMENT_NOT_FOUND`; `712 WRONG_DOCUMENT_HASH` | `transaction_id` errado; hash divergente | Repetir o download com o `transaction_id` correto — **sem** reassinar (Regra 1) |
+| **(6) Download com HTTP 406** | `Could not find acceptable representation` | Header Accept incompatível com retorno binário, observado com application/json | Usar Accept application/octet-stream e repetir só o download. Ler o ID em signatures[n].transaction |
 
 ### 4.2 Por família de código (quem resolve)
 
@@ -197,7 +198,7 @@ falhou** (Regra 1):
 - PKCE: `code_verifier` é o par exato do `code_challenge` (S256) do **mesmo** fluxo.
 - `code` de uso único: trocar imediatamente, nunca reutilizar.
 - `redirect_uri` **idêntico** entre `/authorize` e `/token` (cuidado com barra final, `http`/`https`, maiúsculas). **Não precisa ser pré-cadastrado** — a única regra é usar o mesmo valor nas duas chamadas.
-- `manager_id`/`manager_secret` **enviados** (nunca omitir): são os nomes de parâmetro da API (documentação oficial) — `manager_id` recebe o valor do `client_id` e `manager_secret`, o do `client_secret`. No `/authorize`, `manager_id`; no `/token`, `manager_id` e `manager_secret` (os exemplos enviam também `client_id`/`client_secret`). `certillion_manager_id` não existe.
+- `manager_id`/`manager_secret` **enviados**: recebem as credenciais fornecidas pela Certillion. No `/authorize`, `manager_id`; no `/token` intermediado, o par manager basta. Não confundir com o par client do modo de conexão direta ao PSC. `certillion_manager_id` não existe.
 - `psc` igual ao informado no `/authorize`.
 - `/signature` com o **token de assinatura** (de `/oauth/token`), não o token de sistema.
 - Tamanho de arquivo (teste, 100 KB) e tipo de documento vs. `signature_standard`.
