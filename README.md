@@ -1,11 +1,11 @@
 # Certillion — Kit de Integração para IA
 
 Conjunto de arquivos que habilitam assistentes de IA (Claude Code, Codex, Cursor, Windsurf,
-GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API Certillion de assinatura digital
+GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API do módulo CSS — Certillion Signature Server — de assinatura digital
 ICP-Brasil** de forma rápida e correta — gerando código que já respeita o fluxo de autenticação,
 os padrões de assinatura, as regras de custo e os pontos de atenção da plataforma.
 
-> Versão: 0.4-beta · Documentação pública.
+> Versão: 0.5-beta · Documentação pública.
 
 ## Para que serve
 
@@ -16,7 +16,7 @@ experiente nela.
 
 ## Os arquivos
 
-Ficam em [`docs/certillion/`](docs/certillion/). Cada um tem um papel distinto e complementar:
+Os documentos CSS ficam em [`docs/certillion/css/`](docs/certillion/css/). Cada um tem um papel distinto e complementar:
 
 | Arquivo | Papel | Quando usar |
 |---------|-------|-------------|
@@ -34,6 +34,28 @@ Ficam em [`docs/certillion/`](docs/certillion/). Cada um tem um papel distinto e
 o `certillion-openapi.yaml` é a **fonte única de verdade**. Os demais apontam para ele — assim as
 fontes não se contradizem.
 
+## Migração dos caminhos CSS
+
+A documentação deste kit trata do módulo **CSS — Certillion Signature Server**.
+Os arquivos canônicos estão em `docs/certillion/css/`; atualize os caminhos no
+`AGENTS.md`, nas regras do assistente e nas importações do OpenAPI.
+Os nomes dos arquivos e o nome da skill `certillion-api` foram preservados.
+
+Os arquivos Markdown no diretório anterior contêm avisos com links para os novos
+caminhos. Leia os documentos em `css/` para carregar as instruções completas;
+os avisos não substituem a skill, e links para seções antigas devem ser atualizados.
+O YAML em `docs/certillion/certillion-openapi.yaml` permanece disponível para
+importações existentes como cópia gerada do schema canônico em `css/`.
+
+Para manter essa compatibilidade, edite somente o YAML em `css/` e execute:
+
+```bash
+python3 scripts/sync-css-openapi.py
+python3 scripts/sync-css-openapi.py --check
+```
+
+A documentação de integração do módulo Flow ainda não está incluída nesta versão.
+
 ## Como instalar no seu assistente
 
 > Mecanismos de configuração verificados em junho/2026. Os harnesses evoluem rápido; se algum
@@ -50,12 +72,12 @@ simples e portável de configurar:
 2. Crie (ou edite) um `AGENTS.md` na raiz apontando para os arquivos:
 
    ```markdown
-   ## Integração Certillion (assinatura digital ICP-Brasil)
-   Ao trabalhar na integração com a API Certillion, seguir:
-   - Regras: docs/certillion/certillion-skill.md
-   - Guia conceitual: docs/certillion/certillion-api-reference.md
-   - Schema (fonte canônica de endpoints): docs/certillion/certillion-openapi.yaml
-   - Exemplos de código: docs/certillion/certillion-examples-<linguagem>.md
+   ## Integração Certillion CSS (assinatura digital ICP-Brasil)
+   Ao trabalhar na integração com a API do módulo CSS, seguir:
+   - Regras: docs/certillion/css/certillion-skill.md
+   - Guia conceitual: docs/certillion/css/certillion-api-reference.md
+   - Schema (fonte canônica de endpoints): docs/certillion/css/certillion-openapi.yaml
+   - Exemplos de código: docs/certillion/css/certillion-examples-<linguagem>.md
    A skill define as regras (R1–R16); o schema é a fonte de verdade para campos e tipos.
    ```
 
@@ -118,4 +140,4 @@ Dúvidas durante a integração: https://certillion.com/fale-conosco-certillion/
 
 ---
 
-*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.4-beta.*
+*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.5-beta.*

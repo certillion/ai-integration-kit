@@ -1,0 +1,1760 @@
+openapi: "3.0.3"
+
+info:
+  title: Certillion API
+  version: "0.5-beta"
+  description: >
+    Documento público — distribuível a clientes e parceiros integradores. Não contém
+    informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
+
+    API REST de assinatura digital ICP-Brasil da e-Sec / Certillion.
+    Permite que sistemas integradores solicitem assinaturas em nome de usuários
+    que possuam certificado ICP-Brasil, independentemente do provedor (PSC).
+
+    **Conceito central:** o "cliente" desta API é o sistema integrador (servidor),
+    não o usuário final. O usuário final autoriza o sistema via OAuth2 + PKCE a
+    usar seu certificado por um período de tempo determinado.
+
+    **Custo:** determinado por 3 fatores — (1) número de chamadas bem-sucedidas
+    a /signature; (2) padrão de assinatura (PAdES e XAdES custam ~30% mais que
+    CAdES, por serem mais pesados de processar); e (3) excedente de transferência
+    além dos 200 KB já inclusos por assinatura (upload + download), cobrado a
+    1 assinatura por 1 MB excedente no mês. Atenção: chamadas desnecessárias por
+    tratamento incorreto de erros (repetir passos já concluídos) não são um quarto
+    fator, mas inflam os fatores 1 e 3. Ver seção de schemas para alertas inline.
+
+servers:
+  - url: https://cloud.certillion.com/css/restful/application
+    description: >
+      Servidor padrão — usar para todos os PSCs em nuvem
+      (VIDAAS, SAFEID, REMOTEID, NEOID, VAULTID, BIRDID, DSCLOUD, etc.)
+  - url: https://cloud-ws.certillion.com/css/restful/application
+    description: >
+      Servidor do Assinador — usar EXCLUSIVAMENTE quando psc=CERTILLION_SIGNER
+      (certificados A1 em arquivo ou A3 em token/cartão físico na máquina do usuário).
+      Usar o servidor errado resultará em erro 404.
+
+tags:
+  - name: Sistema
+    description: Autenticação do sistema integrador (server-to-server)
+  - name: Certificados
+    description: Descoberta e listagem de PSCs e certificados do usuário
+  - name: Autorização do Usuário
+    description: Fluxo OAuth2 + PKCE para autorizar uso do certificado pelo usuário final
+  - name: Documentos
+    description: Upload e download de documentos para assinatura
+  - name: Assinatura
+    description: Solicitação e validação de assinaturas digitais ICP-Brasil
+  - name: Tokens
+    description: Gerenciamento do ciclo de vida dos tokens de acesso
+  - name: Aplicação
+    description: Manutenção dos dados cadastrais da aplicação integradora
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerClientToken:
+      type: http
+      scheme: bearer
+      description: >
+        Token obtido via /oauth/client_token. Representa a autenticação do
+        sistema integrador. Usar em upload, download, validação e manutenção.
+    BearerSigningToken:
+      type: http
+      scheme: bearer
+      description: >
+        Token obtido via /oauth/token, /oauth/otp_authorize ou /oauth/pwd_authorize.
+        Representa a autorização do usuário final para uso do seu certificado.
+        OBRIGATÓRIO em /oauth/signature.
+        ATENÇÃO: este token pode ser cancelado pelo PSC antes do prazo solicitado.
+        Monitorar expiração e reiniciar o fluxo de autorização se necessário.
+
+  schemas:
+
+    # ── STATUS ────────────────────────────────────────────────────────────────
+
+    StatusObject:
+      type: object
+      description: >
+        Objeto de status retornado em todas as respostas do Certillion.
+        O campo code é o principal indicador — não confiar apenas no HTTP status.
+      properties:
+        code:
+          type: integer
+          description: >
+            Código de status interno do Certillion. Valores relevantes:
+            100 = REQUEST_OK (sucesso),
+            200 = OK (sucesso de upload),
+            140 = SIGNATURE_VALID (assinatura válida — verificar por entrada em lotes),
+            249 = TOKEN_VALIDITY_INVALID (token expirado — reiniciar /authorize + /token),
+            250 = INVALID_ACCESS_TOKEN,
+            301 = TIMEOUT (aguardar e repetir),
+            711 = DOCUMENT_NOT_FOUND (documento expirou após 48h — re-upload necessário).
+          example: 100
+        name:
+          type: string
+          description: Nome legível do status.
+          example: REQUEST_OK
+        detail:
+          type: string
+          description: Mensagem descritiva adicional.
+          example: Request accepted by the receiver.
+
+    # ── AUTENTICAÇÃO DO SISTEMA ───────────────────────────────────────────────
+
+    ClientTokenRequest:
+      type: object
+      description: >
+        Body para obtenção do token do sistema integrador.
+        Enviado como application/x-www-form-urlencoded.
+      required:
+        - client_id
+        - client_secret
+        - grant_type
+      properties:
+        client_id:
+          type: string
+          description: Identificador da aplicação fornecido pela e-Sec.
+          example: "meu-client-id"
+        client_secret:
+          type: string
+          description: >
+            Segredo da aplicação fornecido pela e-Sec.
+            NUNCA incluir em código-fonte ou repositórios versionados.
+            Armazenar exclusivamente como variável de ambiente.
+          example: "meu-client-secret"
+        grant_type:
+          type: string
+          enum: [client_credentials]
+          description: Valor fixo obrigatório.
+          example: "client_credentials"
+        lifetime:
+          type: integer
+          description: >
+            Duração desejada do token em segundos. Opcional; default 300.
+            Renovar o token antes do vencimento para operações longas.
+          default: 300
+          example: 300
+
+    ClientTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: Token Bearer para uso nas demais chamadas do sistema.
+          example: "eyJhbGciOiJSUzI1NiJ9..."
+        expires_in:
+          type: integer
+          description: Validade do token em segundos a partir da emissão.
+          example: 300
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: "Bearer"
+        error:
+          type: string
+          nullable: true
+          description: Código de erro. null em caso de sucesso.
+        error_description:
+          type: string
+          nullable: true
+          description: Descrição do erro. null em caso de sucesso.
+
+    # ── PSC ───────────────────────────────────────────────────────────────────
+
+    PSCIdentifier:
+      type: string
+      description: >
+        Identificador do Prestador de Serviço de Confiança (PSC).
+        A lista completa e atualizada é retornada por GET /oauth/psc-info.
+        Além dos PSCs em nuvem, existe o CERTILLION_SIGNER para certificados
+        locais (A1/A3) — nesse caso usar obrigatoriamente o endpoint cloud-ws.
+      # Sem enum fechado: consultar a lista atual do servidor em /psc-info.
+      example: "VIDAAS"
+
+    FindPscAccountsRequest:
+      type: object
+      required:
+        - client_id
+        - client_secret
+        - user_cpf_cnpj
+        - val_cpf_cnpj
+      properties:
+        client_id:
+          type: string
+          description: Identificador da aplicação fornecido pela e-Sec.
+        client_secret:
+          type: string
+          description: Segredo da aplicação. Manter em variável de ambiente.
+        user_cpf_cnpj:
+          type: string
+          enum: [CPF, CNPJ]
+          description: Tipo de identificador a pesquisar.
+          example: "CPF"
+        val_cpf_cnpj:
+          type: string
+          description: Número do CPF (11 dígitos) ou CNPJ (14 dígitos) sem formatação.
+          example: "00000000000"
+
+    FindPscAccountsResponse:
+      type: object
+      description: >
+        Lista com resultado de cada PSC consultado.
+        status="S" indica que o usuário possui certificado naquele PSC.
+        status="N" indica ausência. Se todos retornarem "N", o usuário só pode
+        assinar via CERTILLION_SIGNER com certificado local.
+      properties:
+        pscs:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserDiscoveryResponse"
+
+    UserDiscoveryResponse:
+      type: object
+      properties:
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              slot_alias:
+                type: string
+              label:
+                type: string
+        status:
+          type: string
+          enum: [S, N]
+
+    UserDiscoveryRequest:
+      type: object
+      required:
+        - client_id
+        - client_secret
+        - user_cpf_cnpj
+        - val_cpf_cnpj
+        - psc
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        user_cpf_cnpj:
+          type: string
+          enum: [CPF, CNPJ]
+        val_cpf_cnpj:
+          type: string
+          example: "00000000000"
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+
+    # ── OAUTH2 TOKEN ──────────────────────────────────────────────────────────
+
+    AuthScope:
+      type: string
+      description: >
+        Escopo da autorização concedida pelo usuário.
+
+        single_signature: 1 chamada /signature para 1 documento.
+        multi_signature:  1 chamada /signature para lote de documentos.
+        signature_session: N chamadas /signature durante o período lifetime.
+          Recomendado para sistemas onde o usuário assina múltiplos documentos
+          em sequência sem precisar reautenticar.
+      enum:
+        - single_signature
+        - multi_signature
+        - signature_session
+      default: single_signature
+      example: "signature_session"
+
+    TokenRequest:
+      type: object
+      description: >
+        Body para /oauth/token (segunda etapa OAuth2).
+        Troca o code recebido no callback por um access_token de assinatura.
+        Enviado como application/x-www-form-urlencoded.
+      required:
+        - grant_type
+        - code
+        - code_verifier
+        - manager_id
+        - manager_secret
+      properties:
+        client_id:
+          type: string
+          description: Opcional; identificação própria da aplicação junto ao PSC no modo de conexão direta.
+        client_secret:
+          type: string
+          description: Opcional; segredo próprio junto ao PSC no modo de conexão direta. Não duplicar as credenciais manager no fluxo intermediado.
+        grant_type:
+          type: string
+          enum: [authorization_code]
+          description: Valor fixo obrigatório.
+        code:
+          type: string
+          description: >
+            Código recebido no parâmetro ?code= do callback do /authorize.
+            De uso único — expira rapidamente após o redirecionamento.
+          example: "a9ef7f76-1118-4731-95b5-4ead66ec9457"
+        code_verifier:
+          type: string
+          description: >
+            Par do code_challenge enviado ao /authorize. Gerado via algoritmo S256.
+            Deve ser o mesmo valor gerado no início do fluxo atual — nunca reutilizar
+            entre fluxos diferentes.
+          example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        manager_id:
+          type: string
+          description: >
+            Obrigatório. Nome de parâmetro da documentação oficial da API; use o valor do seu
+            client_id (manager_id = client_id). Não omitir. Nome do campo: manager_id (não
+            certillion_manager_id).
+        manager_secret:
+          type: string
+          description: >
+            Obrigatório. Nome de parâmetro da documentação oficial da API; use o valor do seu
+            client_secret (manager_secret = client_secret). Não omitir.
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+          description: >
+            Mesmo PSC informado no /authorize. Preferir o parâmetro psc na query
+            de /token para manter compatibilidade entre provedores.
+        redirect_uri:
+          type: string
+          description: >
+            Deve ser idêntica à enviada no /authorize. Não requer pré-cadastro — qualquer URL
+            é aceita desde que seja exatamente igual nas duas chamadas (/authorize e /token).
+          example: "https://seudominio.com.br/callback"
+
+    TokenResponse:
+      type: object
+      description: >
+        Token de assinatura retornado após autorização bem-sucedida do usuário.
+        ATENÇÃO: o campo expires_in é a fonte de verdade para o tempo de sessão —
+        o tempo efetivo é definido pelo PSC e não é necessariamente o solicitado.
+        Exemplos: o SerproID tem padrão de 15 minutos; o RemoteID admite até 24 horas.
+        Monitorar expiração e reiniciar /authorize + /token se necessário.
+      properties:
+        access_token:
+          type: string
+          description: >
+            Token Bearer para uso em /signature, /certificate-discovery e /token-command.
+            Representa a autorização do usuário para uso do certificado.
+          example: "eyJhbGciOiJSUzI1NiJ9..."
+        expires_in:
+          type: integer
+          description: >
+            Duração real da sessão em segundos, conforme retornado pelo PSC.
+            USAR ESTE VALOR — não o lifetime solicitado.
+          example: 14400
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: "Bearer"
+        scope:
+          $ref: "#/components/schemas/AuthScope"
+        authorized_identification:
+          type: string
+          description: >
+            CPF ou CNPJ do usuário que concedeu a autorização.
+            Disponível apenas após este passo — não disponível antes do /token.
+          example: "00000000000"
+        authorized_identification_type:
+          type: string
+          enum: [CPF, CNPJ]
+          description: Tipo do identificador retornado.
+          example: "CPF"
+        error:
+          type: string
+          nullable: true
+          enum:
+            - invalid_request
+            - invalid_grant
+            - invalid_client
+            - unsupported_grant_type
+            - server_error
+            - null
+        error_description:
+          type: string
+          nullable: true
+        error_uri:
+          type: string
+          nullable: true
+          description: URI da documentação do erro.
+
+    OtpAuthorizeRequest:
+      type: object
+      description: >
+        Autenticação alternativa via OTP do app Certillion.
+        Combina /authorize + /token em uma única chamada server-to-server.
+        Não requer abertura de navegador.
+      required:
+        - client_id
+        - client_secret
+        - username
+        - otp
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        username:
+          type: string
+          description: CPF ou CNPJ do usuário.
+          example: "00000000000"
+        otp:
+          type: string
+          description: Código OTP fornecido pelo app Certillion instalado no dispositivo do usuário.
+          example: "N683988"
+        scope:
+          $ref: "#/components/schemas/AuthScope"
+        lifetime:
+          type: integer
+          description: Duração desejada em segundos. Default 300.
+          example: 14400
+
+    PwdAuthorizeRequest:
+      type: object
+      description: >
+        Autenticação via senha/OTP do próprio PSC.
+        ATENÇÃO: método OPCIONAL — nem todos os PSCs suportam.
+        Verificar suporte antes de implementar. Retorna HTTP 501 se não suportado.
+      required:
+        - client_id
+        - client_secret
+        - username
+        - password
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        username:
+          type: string
+          description: CPF ou CNPJ do usuário.
+          example: "00000000000"
+        password:
+          type: string
+          description: Senha ou OTP fornecido pelo PSC.
+        scope:
+          $ref: "#/components/schemas/AuthScope"
+        lifetime:
+          type: integer
+          description: Duração desejada em segundos. Default 300.
+          example: 14400
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+
+    # ── DOCUMENTO ─────────────────────────────────────────────────────────────
+
+    DocumentUploadResponse:
+      type: object
+      description: >
+        Resposta ao upload de documento.
+        O campo document_hash é o identificador do documento na plataforma.
+        PERSISTIR este valor — será necessário em /signature.
+        Usar o valor retornado sem recalculá-lo para referenciar o upload.
+        O retorno de cloud usa SHA-256 codificado em Base64URL sem padding.
+        Calcular o digest localmente não substitui o upload necessário aos fluxos
+        que dependem do arquivo armazenado.
+        ATENÇÃO DE CUSTO: documentos ficam disponíveis por no mínimo 24h e no máximo
+        48h. Após isso são apagados. Se a assinatura não for solicitada neste intervalo,
+        um novo upload será necessário — gerando nova cobrança de transferência.
+      properties:
+        document_hash:
+          type: string
+          description: >
+            Identificador do documento no Certillion. Usar no campo hashes[].hash
+            da requisição de /signature. Persistir o retorno exato do upload.
+          example: "LaMjHB1oJjHlMtAcC9d4Fg=="
+        status:
+          $ref: "#/components/schemas/StatusObject"
+
+    # ── ASSINATURA ────────────────────────────────────────────────────────────
+
+    SignatureStandard:
+      type: string
+      description: >
+        Padrão técnico da assinatura digital.
+
+        PADES: insere a assinatura dentro do PDF. Upload obrigatório. Recomendado
+          para prescrições, documentos médicos, contratos. Mais comum no Brasil.
+        PADES_ICP_BR: igual ao PAdES com conformidade explícita ICP-Brasil.
+        CADES: assinatura em envelope separado do documento (formato binário CMS/PKCS7).
+          Quando detached=true, não requer upload — calcular SHA-256 do arquivo
+          localmente e passar no campo hash.
+        XADES: para documentos XML. Insere assinatura dentro do XML.
+        XMLDSIG_ENVELOPED / XMLDSIG_ENVELOPING: variantes de assinatura XML.
+        RAW: assinatura binária bruta.
+
+        CUSTO: PAdES e XAdES custam ~30% mais que CAdES, por serem mais pesados
+        de processar. A diferença de custo não deve guiar a escolha — usar o padrão
+        tecnicamente adequado ao documento (PAdES para PDF, XAdES para XML).
+
+        Default: CADES
+      enum:
+        - PADES
+        - PADES_ICP_BR
+        - CADES
+        - XADES
+        - RAW
+        - XMLDSIG_ENVELOPED
+        - XMLDSIG_ENVELOPING
+      default: CADES
+      example: "PADES"
+
+    SignaturePolicy:
+      type: string
+      description: >
+        Política de assinatura ICP-Brasil.
+
+        AD_RB: Assinatura Digital de Referência Básica. Mais simples, sem carimbo
+          de tempo. Adequada para a maioria dos casos de uso.
+        AD_RT: Referência de Tempo — inclui carimbo de tempo TSA.
+        AD_RV: Referência para Validação.
+        AD_RC: Referência Completa.
+        AD_RA: Referência para Arquivamento. Mais completa, maior tamanho.
+
+        ADOBE_PDF / ADOBE_PDF_RT: políticas para PDF. Não presumir a presença de
+          carimbo de tempo somente pelo nome da política; verificar os atributos
+          da assinatura quando o carimbo de tempo for requisito da integração.
+
+        Default: AD_RB
+      enum: [AD_RB, AD_RT, AD_RV, AD_RC, AD_RA, ADOBE_PDF, ADOBE_PDF_RT]
+      default: AD_RB
+      example: "AD_RB"
+
+    HashEntry:
+      type: object
+      description: >
+        Entrada representando um arquivo a ser assinado.
+        IMPORTANTE EM LOTES: o campo id é obrigatório para correlacionar a resposta
+        com a entrada correta, pois a ordem de retorno pode diferir da ordem de envio.
+      required:
+        - hash
+      properties:
+        id:
+          type: string
+          description: >
+            Identificador desta entrada na lista. Obrigatório quando hashes contém
+            mais de um elemento — usar para correlacionar com signatures[] na resposta.
+          example: "1"
+        alias:
+          type: string
+          description: Nome descritivo do arquivo. Não exibido ao usuário final.
+          example: "receita_amoxicilina"
+        hash:
+          type: string
+          description: >
+            Para PAdES/XAdES: document_hash retornado pelo POST /document (upload).
+            Para CAdES detached: hash SHA-256 do arquivo em Base64, calculado localmente
+            (não requer upload).
+          example: "LaMjHB1oJjHlMtAcC9d4Fg=="
+        hash_algorithm:
+          type: string
+          description: >
+            OID do algoritmo: SHA-256 = 2.16.840.1.101.3.4.2.1;
+            SHA-512 = 2.16.840.1.101.3.4.2.3 (Swagger CSS).
+            Enviar o OID, não o nome textual do algoritmo (ex.: SHA-256).
+          example: "2.16.840.1.101.3.4.2.1"
+        signature_standard_options:
+          $ref: "#/components/schemas/SignatureStandardOptions"
+
+    SignatureStandardOptions:
+      type: object
+      description: Opções adicionais específicas do padrão de assinatura.
+      properties:
+        pdf_options:
+          $ref: "#/components/schemas/PdfOptions"
+        xml_options:
+          $ref: "#/components/schemas/XmlOptions"
+
+    PdfOptions:
+      type: object
+      description: Opções para assinatura PAdES.
+      properties:
+        contact_info:
+          type: string
+          description: Informação de contato do signatário (não visível na assinatura).
+        location:
+          type: string
+          description: Localização física onde o documento foi assinado (não visível).
+        reason:
+          type: string
+          description: Motivo da assinatura (não visível).
+        visible_signature_options:
+          $ref: "#/components/schemas/VisibleSignatureOptions"
+
+    VisibleSignatureOptions:
+      type: object
+      description: >
+        Configuração de assinatura visível no PDF.
+        A assinatura visível é equivalente ao carimbo do médico/profissional.
+        Tanto a assinatura visível quanto a invisível possuem o mesmo valor legal.
+        A visível é culturalmente esperada por usuários finais no Brasil.
+        Informar dimensões e deslocamentos em pontos inteiros.
+        Em páginas 595x842 sem rotação e sem position_on_page, distance_y é medido
+        a partir da borda superior. Considerar a rotação e o posicionamento da página.
+      properties:
+        page_number:
+          type: integer
+          description: Página do PDF onde a assinatura será inserida. Default 1.
+          default: 1
+          example: 1
+        distance_x:
+          type: integer
+          description: Posição no eixo X a partir da margem esquerda. Default 0.
+          default: 0
+          example: 50
+        distance_y:
+          type: integer
+          description: Deslocamento vertical em pontos. Em páginas 595x842 sem rotação e sem position_on_page, a origem é a margem superior.
+          default: 0
+          example: 50
+        width:
+          type: integer
+          description: Largura do campo de assinatura em pontos. Default 200.
+          default: 200
+          example: 200
+        height:
+          type: integer
+          description: Altura do campo de assinatura em pontos. Default 100.
+          default: 100
+          example: 100
+        text:
+          type: string
+          description: >
+            Texto exibido na assinatura visível. Suporta variáveis:
+            CERT_CN          → nome completo conforme certificado
+            CERT_CN_WO_CPF   → nome sem o CPF
+            CERT_CPF         → CPF do signatário
+            SIGN_DATE        → data/hora da assinatura (dd/MM/yyyy HH:mm:ss z)
+          example: "CERT_CN_WO_CPF\nCPF: CERT_CPF\nData: SIGN_DATE"
+        text_font:
+          type: string
+          enum: [HELVETICA, TIMES_ROMAN, COURIER]
+          default: HELVETICA
+        text_font_size:
+          type: integer
+          default: 10
+          example: 10
+        text_alignment:
+          type: string
+          enum: [LEFT, RIGHT, CENTER]
+          default: LEFT
+        text_padding:
+          type: integer
+          default: 0
+        position_on_page:
+          type: string
+          description: Posição predefinida na página (alternativa às coordenadas manuais).
+          enum:
+            - TOP_LEFT
+            - TOP_CENTER
+            - TOP_RIGHT
+            - CENTER_LEFT
+            - MIDDLE
+            - CENTER_RIGHT
+            - BOTTOM_LEFT
+            - BOTTOM_CENTER
+            - BOTTOM_RIGHT
+          default: TOP_LEFT
+          example: "BOTTOM_RIGHT"
+        image_data:
+          type: string
+          description: >
+            Imagem da assinatura codificada em Base64.
+            Se não fornecida, image_zoom e image_position são ignorados.
+          example: "iVBORw0KGgoAAAANSUhEUgAA..."
+        image_zoom:
+          type: number
+          description: Fator de zoom da imagem. 1.0 = tamanho original.
+          default: 1.0
+        image_position:
+          type: string
+          description: Posicionamento da imagem dentro da área de assinatura.
+        signature_field_name:
+          type: string
+          description: >
+            Nome do campo PDF preformatado onde a assinatura será inserida.
+            Se preenchido, todos os outros parâmetros de posicionamento são ignorados.
+            Útil para PDFs com área de assinatura já definida no layout.
+        visual_rotation:
+          type: string
+          enum: [NONE, ROTATION_90, ROTATION_180, ROTATION_270]
+          default: NONE
+
+    XmlOptions:
+      type: object
+      description: Opções para assinatura XML (XAdES / XMLDSig).
+      properties:
+        attribute_id_name:
+          type: string
+          description: >
+            Nome do atributo ID (ex.: "id", "Id", "ID").
+            Mutuamente exclusivo com elements_id.
+        elements_id:
+          type: string
+          description: Identificador do elemento XML a assinar. Informar uma string, não um array.
+          example: "item-1"
+        elements_name:
+          type: string
+          description: >
+            Nome do elemento XML. Informar uma string, não um array.
+            Não é equivalente à seleção por ID: a referência pode abranger o
+            documento inteiro. Para selecionar um ID específico, usar elements_id.
+          example: "item"
+        signature_tag_position:
+          type: string
+          enum: [INSIDE, JUST_AFTER, APPENDED]
+          description: Posição da tag <ds:Signature> no arquivo XML.
+        multiple_signatures:
+          type: boolean
+          default: false
+        add_key_val:
+          type: boolean
+          description: Incluir tag ds:KeyValue com a chave pública do assinante.
+          default: false
+        add_subject_name:
+          type: boolean
+          description: Incluir tag X509SubjectName com identificação do proprietário.
+          default: false
+        remove_signature_id:
+          type: boolean
+          description: Remover o identificador da tag de assinatura.
+          default: false
+
+    SignatureRequest:
+      type: object
+      description: >
+        Requisição de assinatura digital.
+
+        CUSTO: cada chamada bem-sucedida a este endpoint gera 1 unidade de cobrança
+        por entrada em hashes[]. Chamar este método desnecessariamente (ex.: ao
+        repetir o fluxo inteiro após falha apenas no download) resulta em cobrança
+        dupla. Em caso de falha, retentar APENAS o passo que falhou.
+
+        CUSTO DO PADRÃO: o signature_standard afeta o preço unitário — PAdES e
+        XAdES custam ~30% mais que CAdES, por serem mais pesados de processar.
+        Escolher o padrão pela necessidade do documento, não por default de código.
+
+        RATE LIMIT: os PSCs limitam a taxa de chamadas por CPF; o valor varia por
+        provedor e pode mudar sem aviso (atualmente ~80 chamadas/minuto). Em sistemas
+        de alto volume para um único usuário, implementar throttling e retentar com backoff.
+
+        LOTES: preferir lotes de até 5–10 documentos. Lotes maiores aumentam o
+        risco de timeout HTTP com perda de toda a requisição.
+      required:
+        - hashes
+      properties:
+        signature_standard:
+          $ref: "#/components/schemas/SignatureStandard"
+          description: Em cloud/VIDAAS, a omissão usa CMS/CAdES attached. Informar explicitamente o padrão desejado.
+        signature_policy:
+          $ref: "#/components/schemas/SignaturePolicy"
+        pki_name:
+          type: string
+          description: PKI a ser usada na validação do certificado. Default ICP_BR.
+          default: ICP_BR
+          example: "ICP_BR"
+        detached:
+          type: boolean
+          description: >
+            Apenas para CAdES. Se true, a assinatura é gerada separada do documento
+            (não embutida). Permite assinar sem fazer upload do arquivo.
+            Para PAdES este campo é ignorado.
+          default: false
+        hashes:
+          type: array
+          description: >
+            Lista de documentos a assinar. Cada entrada corresponde a um documento
+            previamente enviado via POST /document.
+            LOTES: usar campo id em cada entrada para correlacionar com a resposta,
+            pois a ordem em signatures[] pode diferir da ordem de envio.
+          items:
+            $ref: "#/components/schemas/HashEntry"
+          minItems: 1
+        certificate_alias:
+          type: string
+          description: >
+            Alias do certificado a usar na assinatura. Opcional — se omitido,
+            o Certillion usa o certificado padrão autorizado.
+        re_signature_transaction_id:
+          type: integer
+          format: int64
+          description: >
+            Referência à transação anterior para coassinatura.
+
+    SignatureEntry:
+      type: object
+      description: >
+        Resultado de assinatura para um documento específico.
+        VERIFICAR: status.code === 140 (SIGNATURE_VALID) antes de aceitar a assinatura.
+        Em lotes, é possível ter entradas válidas e inválidas na mesma requisição.
+        Assinaturas inválidas ocorrem tipicamente quando o arquivo está corrompido
+        ou quando o PDF não possui estrutura válida.
+      properties:
+        id:
+          type: string
+          description: Mesmo id informado na entrada do hashes[]. Usar para correlacionar.
+          example: "1"
+        transaction:
+          type: integer
+          format: int64
+          description: >
+            Identificador da transação de assinatura.
+            PERSISTIR este valor — necessário para GET /document/{transaction_id}.
+            Cada documento possui seu próprio campo transaction (inteiro).
+            transaction_id pode ser nome de variável interna, mas não é a chave
+            retornada em signatures[] pela API.
+          example: 147169519
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        raw_signature:
+          type: string
+          description: >
+            Estrutura binária da assinatura em Base64.
+            Para PAdES: parte da estrutura interna — o documento completo é obtido
+            via GET /document/{transaction_id}.
+            Para CAdES detached: esta é a assinatura pronta para uso.
+        document_name:
+          type: string
+          description: Nome do documento assinado.
+
+    SignatureResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        usage_alert:
+          type: string
+          nullable: true
+        signatures:
+          type: array
+          description: >
+            Uma entrada por documento assinado. A ordem pode diferir de hashes[].
+            Usar o campo id para correlacionar com as entradas enviadas.
+          items:
+            $ref: "#/components/schemas/SignatureEntry"
+        signer_certificate:
+          $ref: "#/components/schemas/CertificateInfo"
+        signer_identifier:
+          type: string
+          description: CPF ou CNPJ do usuário que assinou.
+          example: "00000000000"
+        policy_id:
+          type: string
+          description: OID da política de assinatura aplicada.
+
+    # ── VALIDAÇÃO ─────────────────────────────────────────────────────────────
+
+    ValidateRequest:
+      type: object
+      description: >
+        Validação de assinatura ICP-Brasil. Funciona para assinaturas geradas
+        pelo Certillion ou por qualquer outro sistema compatível com ICP-Brasil.
+        Verifica cadeia de certificação, CRL e OCSP.
+      required:
+        - signature
+      properties:
+        signature:
+          type: string
+          description: >
+            Para PDF: conteúdo do arquivo assinado em Base64, ou document_hash
+            de arquivo ainda disponível no servidor Certillion.
+            Para CAdES/XML attached: arquivo assinado em Base64.
+            Para CAdES detached: arquivo de assinatura em Base64 (o conteúdo
+            original vai no campo content ou document_hash).
+          example: "JVBERi0xLjQKJeLjz9MK..."
+        content:
+          type: string
+          description: >
+            Para CAdES detached: conteúdo original do arquivo em Base64.
+            Alternativa ao document_hash.
+          example: "iVBORw0KGgo..."
+        document_hash:
+          type: string
+          description: >
+            Para CAdES detached: referência do arquivo original já enviado ao servidor.
+            Em cloud/VIDAAS foram aceitos o retorno Base64URL do upload e seu SHA-256
+            equivalente em Base64 padrão. Ambos representavam o mesmo digest de arquivo
+            já armazenado; isso não comprova validação sem o original no servidor.
+        pki_name:
+          type: string
+          description: PKI a usar na validação. Default ICP_BR.
+          default: ICP_BR
+          example: "ICP_BR"
+
+    CertificateInfo:
+      type: object
+      nullable: true
+      description: >
+        Certificado e cadeia recursiva. A descoberta usa datas ISO; a validação
+        pode usar strings de data legíveis com timezone BRT/UTC. Não impor formato
+        ISO único a todos os endpoints. Em validação, campos alias/status/certificate
+        podem ser null. issuer_certificate representa recursivamente a cadeia de emissores.
+      properties:
+        serial_number:
+          type: string
+          nullable: true
+          description: Pode ser hexadecimal na descoberta e decimal na validação; preservar a representação recebida.
+        subject_dn:
+          type: string
+          nullable: true
+        issuer_dn:
+          type: string
+          nullable: true
+        not_before:
+          type: string
+          nullable: true
+        not_after:
+          type: string
+          nullable: true
+        alias:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        certificate:
+          type: string
+          nullable: true
+        issuer_certificate:
+          $ref: "#/components/schemas/CertificateInfo"
+
+    CertificateDiscoveryResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertificateInfo"
+
+    SignatureValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: Resultado de validade desta assinatura; inspecionar cada entrada.
+        signing_time:
+          type: string
+        signer_certificate:
+          $ref: "#/components/schemas/CertificateInfo"
+        policy_id:
+          type: string
+          nullable: true
+          description: Pode ser null em validações PAdES válidas; não confundir com assinatura inválida.
+        policy_url:
+          type: string
+          nullable: true
+        legal_identifier:
+          type: string
+        error:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Erros de validação. Pode ser null quando não há erros.
+
+    ValidateResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StatusObject"
+        signatures:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignatureValidationResult"
+
+    # ── TOKEN COMMAND ─────────────────────────────────────────────────────────
+
+    TokenCommandRequest:
+      type: object
+      description: Gerenciamento de tokens ativos.
+      required:
+        - operation
+        - psc
+      properties:
+        operation:
+          type: string
+          enum: [INVALIDATE]
+          description: >
+            Operação a executar. INVALIDATE cancela o token ativo.
+            Quando suportado pelo PSC, o cancelamento é propagado ao PSC também.
+          example: "INVALIDATE"
+        psc:
+          $ref: "#/components/schemas/PSCIdentifier"
+        lifetime:
+          type: string
+          description: Reservado para uso futuro.
+        scope:
+          type: string
+          description: Reservado para uso futuro.
+        user_id:
+          type: string
+          description: Reservado para uso futuro.
+        user_secret:
+          type: string
+          description: Reservado para uso futuro.
+
+    # ── MANUTENÇÃO DA APLICAÇÃO ───────────────────────────────────────────────
+
+    ClientMaintenanceRequest:
+      type: object
+      description: Atualização de dados cadastrais da aplicação integradora.
+      required:
+        - client_id
+        - client_secret
+      properties:
+        client_id:
+          type: string
+          description: Identificador da aplicação fornecido pela e-Sec.
+        client_secret:
+          type: string
+          description: Segredo da aplicação. Manter em variável de ambiente.
+        name:
+          type: string
+          description: Nome/descrição da aplicação visível internamente.
+          example: "Meu Sistema de Prescrição"
+        comments:
+          type: string
+          description: Observações gerais de uso.
+        redirect_uris:
+          type: array
+          description: >
+            (Opcional) Cadastro de URIs de callback, feito no cadastro da aplicação. NÃO é
+            obrigatório: o fluxo OAuth funciona com qualquer redirect_uri, desde que o mesmo
+            valor seja usado em /authorize e /token. Se houver cadastro, o redirect_uri pode ser
+            omitido nessas chamadas; para usar uma URI diferente da cadastrada, informe a nova no
+            campo redirect_uri de /authorize e /token (mesmo valor nas duas).
+          items:
+            type: string
+            format: uri
+          example: ["https://seudominio.com.br/callback"]
+        email:
+          type: string
+          format: email
+          description: E-mail para contato em caso de indisponibilidade ou mudança de versão.
+          example: "suporte@seudominio.com.br"
+
+    PrepareSignerRequest:
+      type: object
+      description: >
+        Solicitação ao aplicativo Assinador Certillion. O callback_uri é obrigatório.
+      required: [callback_uri]
+      properties:
+        signer:
+          type: string
+          description: CPF/CNPJ do titular que realizará a assinatura.
+        callback_uri:
+          type: string
+          format: uri
+          description: URL para receber POST do resultado da assinatura.
+        lifetime:
+          type: integer
+          description: Tempo de validade da solicitação, em minutos.
+        signature_standard:
+          $ref: "#/components/schemas/SignatureStandard"
+        signature_policy:
+          $ref: "#/components/schemas/SignaturePolicy"
+        pki_name:
+          type: string
+        detached:
+          type: boolean
+        hashes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HashEntry"
+
+    PrepareSignerResponse:
+      type: object
+      properties:
+        registered_link:
+          type: string
+          nullable: true
+        expires_in:
+          type: integer
+          nullable: true
+        transaction_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Campo desta resposta; não confundir com signatures[].transaction de /signature.
+        status:
+          $ref: "#/components/schemas/StatusObject"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+
+paths:
+
+  /oauth/prepare_signer:
+    post:
+      tags: [Assinatura]
+      summary: Cria solicitação para o aplicativo Assinador Certillion
+      description: >
+        Cria uma solicitação de assinatura no aplicativo Assinador Certillion.
+        Requer callback_uri para receber o resultado da assinatura.
+      security:
+        - BearerClientToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareSignerRequest"
+      responses:
+        "200":
+          description: Link/ID da solicitação, conforme Swagger CSS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrepareSignerResponse"
+        "400":
+          description: Requisição inválida; callback ausente retornou 210 BAD_REQUEST.
+
+  /oauth/client_token:
+    post:
+      tags: [Sistema]
+      summary: Autenticação do sistema integrador
+      description: >
+        Obtém token de acesso para o sistema integrador (server-to-server).
+        Usar em upload, download, validação e manutenção.
+        NÃO representa autorização de usuário — não usar em /signature.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/ClientTokenRequest"
+      responses:
+        "200":
+          description: Token gerado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientTokenResponse"
+        "401":
+          description: client_id ou client_secret incorretos.
+        "500":
+          description: Falha interna — repetir a requisição.
+
+  /oauth/psc-info:
+    get:
+      tags: [Certificados]
+      summary: Lista todos os PSCs suportados
+      description: >
+        Retorna lista de identificadores de todos os PSCs suportados pelo Certillion.
+        A lista é atualizada automaticamente — novos PSCs aparecem sem alteração de código.
+        Usar para popular a interface de seleção de provedor para o usuário.
+      security:
+        - BearerClientToken: []
+      responses:
+        "200":
+          description: Lista de PSCs disponíveis.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pscs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PSCIdentifier"
+                example:
+                  pscs: ["BIRDID", "DSCLOUD", "REMOTEID", "SAFEID", "SERPROID", "SYN", "VIDAAS", "GOLDID"]
+
+  /oauth/find-psc-accounts:
+    post:
+      tags: [Certificados]
+      summary: Descobre em quais PSCs um CPF/CNPJ possui certificado
+      description: >
+        Filtra a lista de PSCs para exibir ao usuário apenas os que ele efetivamente
+        pode usar. Reduz confusão e abandonos no fluxo de autenticação.
+        Se todos retornarem status "N", oferecer apenas CERTILLION_SIGNER.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FindPscAccountsRequest"
+      responses:
+        "200":
+          description: Lista com status de certificado por PSC.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindPscAccountsResponse"
+        "400":
+          description: val_cpf_cnpj não preenchido.
+        "401":
+          description: Token inválido ou expirado.
+        "500":
+          description: Parâmetro obrigatório ausente ou falha interna.
+        "504":
+          description: Timeout na comunicação com o PSC — aguardar e repetir.
+
+  /oauth/user-discovery:
+    post:
+      tags: [Certificados]
+      summary: Verifica certificado em um PSC específico
+      description: Variante de find-psc-accounts para consulta a um único PSC.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserDiscoveryRequest"
+      responses:
+        "200":
+          description: Resultado da consulta.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDiscoveryResponse"
+        "400":
+          description: PSC desabilitado ou inválido.
+        "401":
+          description: Token inválido ou expirado.
+
+  /certificate-discovery:
+    get:
+      tags: [Certificados]
+      summary: Recupera o certificado autorizado pelo usuário
+      description: >
+        Retorna detalhes do certificado que o usuário autorizou para uso.
+        Requer token de assinatura (/token ou equivalente).
+      security:
+        - BearerSigningToken: []
+      parameters:
+        - name: Certificate_alias
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Alias do certificado específico a recuperar.
+      responses:
+        "200":
+          description: Certificados encontrados.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateDiscoveryResponse"
+        "401":
+          description: Token inválido, expirado ou limite de acessos ao PSC esgotado.
+        "404":
+          description: Nenhum certificado no slot ou alias inválido.
+
+  /oauth/certificate-discovery:
+    $ref: "#/paths/~1certificate-discovery"
+
+  /oauth/token/{user_id}:
+    get:
+      tags: [Tokens]
+      summary: Consulta o status da sessão de assinatura
+      description: >
+        Em cloud/VIDAAS, usar o CPF retornado em authorized_identification como
+        user_id. Verificar code, name e detail para interpretar o estado da sessão.
+        HTTP 200 com código 249 indica sessão inválida/expirada, não sucesso.
+      security:
+        - BearerClientToken: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identificador do titular da sessão. Em cloud/VIDAAS, usar o CPF autorizado.
+      responses:
+        "200":
+          description: Status direto; verificar code, name e detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusObject"
+
+  /oauth/authorize:
+    get:
+      tags: [Autorização do Usuário]
+      summary: Inicia o fluxo OAuth2 (abrir no navegador do usuário)
+      description: >
+        Primeira etapa da autorização do usuário. Esta URL deve ser aberta no
+        navegador do usuário final — NÃO é uma chamada server-to-server.
+
+        Fluxo: o Certillion identifica o PSC e redireciona para a página de
+        autenticação do provedor. Após autenticação, o navegador é redirecionado
+        para redirect_uri?code={CODE}&state={STATE}.
+
+        O parâmetro code é de uso único e expira rapidamente — trocar por token
+        imediatamente via POST /oauth/token.
+
+        Para CERTILLION_SIGNER usar o servidor cloud-ws.certillion.com.
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+          example: "code"
+        - name: manager_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: >
+            Obrigatório. Nome de parâmetro usado pela documentação oficial da API; receba o valor
+            do seu client_id (manager_id = client_id). Não omitir. Nome do campo: manager_id
+            (não certillion_manager_id).
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+          description: >
+            Hash SHA-256 do code_verifier, codificado em Base64URL (algoritmo S256).
+            Gerar um par novo a cada fluxo de autorização.
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [S256]
+          example: "S256"
+        - name: psc
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PSCIdentifier"
+          description: PSC a usar. Default VAULTID.
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AuthScope"
+        - name: lifetime
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: >
+            Sugestão de duração da sessão em segundos. Default 300. O PSC pode retornar tempo
+            menor — usar expires_in de /token como verdade. Para o usuário não reautenticar a
+            cada documento, combinar com scope=signature_session e persistir/reutilizar o token
+            (ex.: lifetime=43200 = 12 h).
+          example: 14400
+        - name: redirect_uri
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+          description: >
+            URI de callback. Pode ser qualquer URL — não requer pré-cadastro. Regra única:
+            ser idêntica à enviada no /token. (Omitir só faz sentido se houver cadastro fixo
+            via client_maintenance, que é opcional e não necessário para o fluxo funcionar.)
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            Identificador de estado para correlacionar callbacks em ambientes
+            multi-requisição (ex.: aplicações server-side com controle de sessão).
+        - name: login_hint
+          in: query
+          required: false
+          schema:
+            type: string
+          description: CPF/CNPJ para forçar autenticação de usuário específico.
+      responses:
+        "302":
+          description: Redirecionamento para página de autenticação do PSC.
+        "303":
+          description: Redirecionamento para página de autenticação do PSC.
+        "404":
+          description: Parâmetros inválidos ou credencial incorreta.
+
+  /oauth/token:
+    post:
+      tags: [Autorização do Usuário]
+      summary: Troca o code por token de assinatura (OAuth2 etapa 2)
+      description: >
+        Segunda e última etapa da autorização OAuth2. Troca o code recebido
+        no callback por um access_token que autoriza o sistema a solicitar
+        assinaturas em nome do usuário.
+
+        Após este passo, authorized_identification revela o CPF/CNPJ do usuário.
+      parameters:
+        - name: psc
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PSCIdentifier"
+          description: Mesmo PSC do authorize. Localização documentada pelo Swagger CSS e confirmada em cloud/VIDAAS.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Token de assinatura gerado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: PSC inválido, code incorreto ou parâmetro obrigatório ausente.
+        "500":
+          description: Falha interna ou parâmetro obrigatório ausente.
+
+  /oauth/otp_authorize:
+    post:
+      tags: [Autorização do Usuário]
+      summary: Autenticação via OTP do app Certillion (sem navegador)
+      description: >
+        Alternativa ao fluxo /authorize + /token que não requer abertura de navegador.
+        O usuário gera um OTP no app Certillion instalado no dispositivo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtpAuthorizeRequest"
+      responses:
+        "200":
+          description: Token de assinatura gerado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Credenciais incorretas, OTP ausente ou inválido.
+        "500":
+          description: Falha interna.
+
+  /oauth/pwd_authorize:
+    post:
+      tags: [Autorização do Usuário]
+      summary: Autenticação via senha/OTP do PSC (método opcional)
+      description: >
+        ATENÇÃO: nem todos os PSCs suportam este método.
+        Verificar suporte antes de implementar — retorna HTTP 501 se não suportado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PwdAuthorizeRequest"
+      responses:
+        "200":
+          description: Token de assinatura gerado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: PSC desabilitado.
+        "401":
+          description: Credenciais incorretas.
+        "501":
+          description: PSC não suporta este método de autenticação.
+        "504":
+          description: Timeout na comunicação com o PSC.
+
+  /oauth/document:
+    post:
+      tags: [Documentos]
+      summary: Upload do documento a ser assinado
+      description: >
+        Envia o documento para o servidor Certillion. Obrigatório para PAdES e XAdES.
+        Para CAdES detached, o upload pode ser omitido.
+
+        CUSTO: cada assinatura já inclui 200 KB de transferência (upload do original
+        + download do assinado). O documento cresce ao ser assinado (~4 KB por
+        assinatura com os certificados atuais) e a cada nova assinatura adicionada.
+        Apenas o excedente acumulado no mês é cobrado: 1 MB além da franquia =
+        1 assinatura adicional. O impacto é baixo e proporcional; ainda assim,
+        monitorar os tamanhos para não pagar excedente sem perceber.
+
+        RETENÇÃO: documentos ficam disponíveis por 24h a 48h após upload.
+        Após esse prazo são apagados — novo upload será necessário.
+
+        QR CODE: adicionar rodapé e QR Code ao PDF ANTES deste upload.
+        Qualquer alteração após a assinatura invalida a assinatura digitalmente.
+      security:
+        - BearerClientToken: []
+        - BearerSigningToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Conteúdo binário do arquivo a ser assinado.
+      responses:
+        "200":
+          description: Documento enviado com sucesso. Persistir document_hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentUploadResponse"
+        "400":
+          description: Arquivo corrompido ou ilegível.
+        "401":
+          description: Token inválido ou expirado.
+        "500":
+          description: Token ausente, arquivo vazio ou falha interna.
+
+  /oauth/document/{transaction_id}:
+    get:
+      tags: [Documentos]
+      summary: Download do documento assinado
+      description: >
+        Baixa o documento assinado após conclusão de /signature.
+
+        TRATAMENTO DE ERRO: se este passo falhar, retentar APENAS este GET com
+        o mesmo transaction_id. NÃO repetir /signature nem /document (upload).
+        Repetir desnecessariamente gera cobrança duplicada.
+
+        RETENÇÃO: disponível por 24h–48h após a assinatura.
+
+        AUTORIZAÇÃO: aceita tanto BearerClientToken quanto BearerSigningToken.
+        Se o token de assinatura não estiver mais disponível, obter um novo
+        client_token e usá-lo no download.
+
+        NEGOCIAÇÃO: enviar Accept application/octet-stream. Um Accept incompatível
+        pode produzir HTTP 406. Não interpretar esse 406 como falha da assinatura
+        nem reiniciar o fluxo.
+      security:
+        - BearerClientToken: []
+        - BearerSigningToken: []
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: >
+            Valor de signatures[n].transaction retornado por POST /signature.
+            O nome transaction_id neste path é apenas o rótulo do parâmetro da URL.
+          example: 147169519
+      responses:
+        "200":
+          description: >
+            Conteúdo binário do arquivo assinado (byte[]).
+            Salvar como arquivo na aplicação — banco de dados, sistema de arquivos,
+            envio por e-mail, etc.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Assinatura inválida ou padrão incompatível com download.
+        "401":
+          description: Token inválido ou expirado.
+        "404":
+          description: transaction_id inválido, expirado ou pertencente a outra empresa.
+        "406":
+          description: Accept incompatível com o retorno binário; corrigir o header sem reassinar.
+        "500":
+          description: Falha interna.
+
+  /oauth/signature:
+    post:
+      tags: [Assinatura]
+      summary: Solicita assinatura de documentos
+      description: >
+        Solicita ao PSC a assinatura dos documentos indicados.
+        Requer obrigatoriamente o token de assinatura (BearerSigningToken).
+
+        TRATAMENTO CORRETO DE ERROS — regra crítica de custo:
+        Se este passo falhar: retentar apenas este POST com o document_hash anterior.
+        NÃO re-fazer o upload.
+        Se o passo de download falhar após este: ir direto ao GET /document/{id}.
+        NÃO repetir esta chamada.
+
+        RATE LIMIT por CPF: varia por PSC e pode mudar sem aviso (~80/min atualmente).
+        Implementar throttling e backoff em sistemas de alto volume.
+
+        LOTES: preferir até 5–10 documentos por chamada. Lotes maiores aumentam
+        risco de timeout com perda de toda a requisição.
+      security:
+        - BearerSigningToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignatureRequest"
+            examples:
+              pades_simples:
+                summary: PAdES simples (mais comum)
+                value:
+                  signature_standard: "PADES"
+                  signature_policy: "AD_RB"
+                  pki_name: "ICP_BR"
+                  detached: false
+                  hashes:
+                    - id: "1"
+                      alias: "receita"
+                      hash: "LaMjHB1oJjHlMtAcC9d4Fg=="
+              pades_assinatura_visivel:
+                summary: PAdES com assinatura visível (carimbo)
+                value:
+                  signature_standard: "PADES"
+                  signature_policy: "AD_RB"
+                  pki_name: "ICP_BR"
+                  detached: false
+                  hashes:
+                    - id: "1"
+                      alias: "receita"
+                      hash: "LaMjHB1oJjHlMtAcC9d4Fg=="
+                      signature_standard_options:
+                        pdf_options:
+                          visible_signature_options:
+                            page_number: 1
+                            distance_x: 50
+                            distance_y: 20
+                            width: 200
+                            height: 80
+                            text: "CERT_CN_WO_CPF\nCPF: CERT_CPF\nData: SIGN_DATE"
+                            text_font: "HELVETICA"
+                            text_font_size: 9
+                            position_on_page: "BOTTOM_RIGHT"
+              cades_detached:
+                summary: CAdES detached (sem upload de arquivo)
+                value:
+                  signature_standard: "CADES"
+                  signature_policy: "AD_RB"
+                  pki_name: "ICP_BR"
+                  detached: true
+                  hashes:
+                    - id: "1"
+                      alias: "imagem"
+                      hash: "+K1kKTeglPaAd9pNaqygJisoI1gq8YRZEDcfuyqLH/w="
+      responses:
+        "200":
+          description: >
+            Requisição processada. Verificar status de CADA entrada em signatures[].
+            status.code === 140 (SIGNATURE_VALID) indica assinatura válida.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignatureResponse"
+        "401":
+          description: >
+            Token inválido, expirado ou limite de acessos ao PSC esgotado.
+            Código 249 TOKEN_VALIDITY_INVALID: reiniciar /authorize + /token.
+        "400":
+          description: >
+            Certificado não encontrado (620), documento não encontrado (711 — re-upload
+            necessário), tipo de documento incompatível (713), hash inválido (702),
+            ou parâmetro obrigatório ausente (200).
+        "500":
+          description: Falha inesperada no processamento.
+        "504":
+          description: Timeout na comunicação com o PSC — aguardar e repetir.
+
+  /oauth/signature/validate:
+    post:
+      tags: [Assinatura]
+      summary: Valida assinatura digital ICP-Brasil
+      description: >
+        Valida qualquer assinatura digital ICP-Brasil, inclusive de sistemas externos.
+        Verifica cadeia de certificação, CRL e OCSP.
+        Assinaturas geradas pelo Certillion são sempre válidas no momento do retorno —
+        este endpoint é útil para validar assinaturas recebidas de terceiros.
+      security:
+        - BearerClientToken: []
+        - BearerSigningToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateRequest"
+      responses:
+        "200":
+          description: Resultado da validação.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateResponse"
+        "400":
+          description: Assinatura inválida, cadeia incompleta ou formato não suportado.
+        "401":
+          description: Token inválido ou expirado.
+
+  /oauth/token-command:
+    post:
+      tags: [Tokens]
+      summary: Invalida um token de acesso ativo
+      description: >
+        Cancela o token de assinatura ativo. Quando suportado pelo PSC,
+        o cancelamento é propagado ao provedor.
+        Verificar o status retornado antes de considerar o token invalidado.
+        Em caso de erro, não presumir que a sessão foi encerrada.
+      security:
+        - BearerSigningToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenCommandRequest"
+      responses:
+        "200":
+          description: Operação executada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusObject"
+        "400":
+          description: Problema na execução do comando.
+        "401":
+          description: Token inválido ou expirado.
+
+  /oauth/client_maintenance:
+    post:
+      tags: [Aplicação]
+      summary: Atualiza dados cadastrais da aplicação
+      description: >
+        Permite atualizar nome, redirect_uris (cadastro opcional) e e-mail de suporte da
+        aplicação. O cadastro de redirect_uris não é obrigatório — serve apenas para poder
+        omitir o redirect_uri em /authorize e /token; sem ele, basta usar o mesmo valor nas
+        duas chamadas.
+      security:
+        - BearerClientToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientMaintenanceRequest"
+      responses:
+        "200":
+          description: Dados atualizados com sucesso.
+        "400":
+          description: JSON mal formado.
+        "401":
+          description: Token inválido ou expirado.
+        "500":
+          description: Falha interna.
