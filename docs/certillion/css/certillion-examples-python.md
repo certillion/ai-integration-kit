@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.5-beta | Linguagem: Python 3.9+
+> Versão: 0.6-beta | Linguagem: Python 3.9+
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -188,24 +188,33 @@ def download_document(transaction_id: str, token: str) -> bytes:
     return resp.content
 ```
 
-## Orquestração com retentativa por passo (R1, R2)
+## Orquestração com estado persistido (R1, R2)
+
+Carregar o estado salvo para o mesmo documento, conta e servidor. `save` deve gravar
+em armazenamento durável antes de retornar; não recriar um estado vazio para repetir
+uma execução. O marcador de intenção permanece se o resultado do POST for incerto.
+Só liberá-lo após reconciliar ou confirmar que a requisição foi rejeitada. Nenhuma
+retentativa de assinatura é automática. Os tokens não pertencem ao estado abaixo.
 
 ```python
-# ⚠️ Os IDs são persistidos entre passos — em caso de falha, retentar
-# APENAS o passo que falhou, nunca reiniciar o fluxo do início.
-def sign_document(pdf_bytes: bytes, signing_token: str) -> bytes:
+def sign_document(pdf_bytes, signing_token, state, save):
     avisar_ambiente_teste()
-
     client_token = get_client_token()
-
-    # Passo 2 — se falhar, repetir só este (novo upload)
-    document_hash = upload_document(pdf_bytes, client_token)
-
-    # Passo 5 — se falhar, repetir só este com o document_hash existente (NÃO re-upload)
-    transaction_id = request_signature(document_hash, signing_token)
-
-    # Passo 6 — se falhar, repetir só este com o transaction_id existente (NÃO re-assinar)
-    return download_document(transaction_id, client_token)
+    if not state.get('transaction_id'):
+        if not state.get('document_hash'):
+            if state.get('upload_attempted'):
+                raise RuntimeError('Upload anterior sem resultado conciliado.')
+            state['upload_attempted'] = True
+            save(dict(state))
+            state['document_hash'] = upload_document(pdf_bytes, client_token)
+            save(dict(state))
+        if state.get('signature_attempted'):
+            raise RuntimeError('Assinatura anterior sem resultado conciliado.')
+        state['signature_attempted'] = True
+        save(dict(state))
+        state['transaction_id'] = request_signature(state['document_hash'], signing_token)
+        save(dict(state))
+    return download_document(state['transaction_id'], client_token)
 ```
 
 ---

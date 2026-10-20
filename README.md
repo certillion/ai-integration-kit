@@ -1,11 +1,11 @@
 # Certillion — Kit de Integração para IA
 
-Conjunto de arquivos que habilitam assistentes de IA (Claude Code, Codex, Cursor, Windsurf,
-GitHub Copilot, Lovable, Antigravity e outros) a integrar a **API do módulo CSS — Certillion Signature Server — de assinatura digital
-ICP-Brasil** de forma rápida e correta — gerando código que já respeita o fluxo de autenticação,
-os padrões de assinatura, as regras de custo e os pontos de atenção da plataforma.
+Documentação e regras para assistentes de IA integrarem os módulos Certillion:
+**CSS — Certillion Signature Server**, para operações de assinatura digital ICP-Brasil,
+e **Flow**, para processos com PDFs, signatários, acompanhamento e download.
+Os arquivos são neutros e podem ser usados nos diferentes assistentes de desenvolvimento.
 
-> Versão: 0.5-beta · Documentação pública.
+> Versão: 0.6-beta · Documentação pública.
 
 ## Para que serve
 
@@ -14,47 +14,44 @@ encapsular passos, mensagens de erro genéricas, tamanho de arquivo mal gerencia
 estes arquivos ao contexto do seu assistente e ele passa a conhecer a API como um desenvolvedor
 experiente nela.
 
-## Os arquivos
+## Escolher o módulo e os arquivos
 
-Os documentos CSS ficam em [`docs/certillion/css/`](docs/certillion/css/). Cada um tem um papel distinto e complementar:
+Começar pelo [guia de seleção CSS/Flow](docs/certillion/certillion-module-selection.md).
+Cada módulo tem skill e contrato próprios. Carregar os documentos complementares
+conforme a tarefa; não é necessário incluir todos os exemplos no contexto.
 
-| Arquivo | Papel | Quando usar |
-|---------|-------|-------------|
-| `certillion-skill.md` | As **regras** (R1–R16) que todo código de integração deve seguir | Sempre — governa o comportamento da IA |
-| `certillion-api-reference.md` | **Guia conceitual**: fluxos, custo, decisões, diagnóstico | Para entender *como* e *por que* algo funciona |
-| `certillion-troubleshooting.md` | **FAQ + runbook de falhas**: perguntas frequentes, diagnóstico, coleta de evidências e suporte | "Como faço X" ou quando uma chamada falha (integração ou produção) |
-| `certillion-openapi.yaml` | **Schema canônico** (OpenAPI 3.0) — a mecânica exata de cada endpoint | Para o detalhe preciso de um endpoint; importar em Postman/Insomnia; gerar SDK |
-| `certillion-examples-nodejs.md` | Exemplos de código — Node.js / TypeScript | Ao escrever o código na linguagem-alvo |
-| `certillion-examples-python.md` | Exemplos de código — Python | idem |
-| `certillion-examples-php.md` | Exemplos de código — PHP | idem |
-| `certillion-examples-java.md` | Exemplos de código — Java | idem |
-| `certillion-examples-ruby.md` | Exemplos de código — Ruby | idem |
+| Papel | CSS | Flow |
+|---|---|---|
+| Regras de integração | [Skill CSS](docs/certillion/css/certillion-skill.md) | [Skill Flow](docs/certillion/flow/certillion-flow-skill.md) |
+| Conceitos e decisões | [Referência CSS](docs/certillion/css/certillion-api-reference.md) | [Referência Flow](docs/certillion/flow/certillion-flow-api-reference.md) |
+| Contrato canônico dos endpoints | [OpenAPI CSS](docs/certillion/css/certillion-openapi.yaml) | [OpenAPI Flow](docs/certillion/flow/certillion-flow-openapi.yaml) |
+| Recuperação e acompanhamento | Skill e referência CSS | [Fluxos Flow](docs/certillion/flow/certillion-flow-integration-flows.md) |
+| Diagnóstico | [Troubleshooting CSS](docs/certillion/css/certillion-troubleshooting.md) | [Troubleshooting Flow](docs/certillion/flow/certillion-flow-troubleshooting.md) |
+| Exemplos | `docs/certillion/css/certillion-examples-<linguagem>.md` | `docs/certillion/flow/certillion-flow-examples-<linguagem>.md` |
 
-**Precedência:** para qualquer detalhe sobre a mecânica de um endpoint (campo, tipo, enum, erro),
-o `certillion-openapi.yaml` é a **fonte única de verdade**. Os demais apontam para ele — assim as
-fontes não se contradizem.
+Ambos incluem exemplos em Node.js, Python, PHP, Java e Ruby. Para campos, tipos,
+enums e respostas, o OpenAPI do **respectivo módulo** é a fonte canônica deste kit.
+A skill define as decisões de integração; referências e exemplos complementam o contrato.
+
+O Flow inclui login, upload PDF, criação/consulta de processos, modelos visuais,
+callback e download ZIP. Conclusão operacional não implica validação criptográfica.
+Para modalidades visíveis, consultar as orientações de diagnóstico e conferir a
+apresentação do artefato; não tratar erro HTTP500 como autorização para recriar pedidos.
 
 ## Migração dos caminhos CSS
 
-A documentação deste kit trata do módulo **CSS — Certillion Signature Server**.
+A documentação anterior deste kit tratava do módulo **CSS — Certillion Signature Server**.
 Os arquivos canônicos estão em `docs/certillion/css/`; atualize os caminhos no
 `AGENTS.md`, nas regras do assistente e nas importações do OpenAPI.
 Os nomes dos arquivos e o nome da skill `certillion-api` foram preservados.
 
-Os arquivos Markdown no diretório anterior contêm avisos com links para os novos
-caminhos. Leia os documentos em `css/` para carregar as instruções completas;
-os avisos não substituem a skill, e links para seções antigas devem ser atualizados.
-O YAML em `docs/certillion/certillion-openapi.yaml` permanece disponível para
-importações existentes como cópia gerada do schema canônico em `css/`.
+Os arquivos dos caminhos anteriores foram removidos, incluindo a cópia antiga
+do OpenAPI. Use diretamente `docs/certillion/css/` tanto nas instruções para o
+assistente quanto nas importações do schema; atualize também links para seções
+dos documentos. Cada artefato CSS existe somente nesse diretório.
 
-Para manter essa compatibilidade, edite somente o YAML em `css/` e execute:
-
-```bash
-python3 scripts/sync-css-openapi.py
-python3 scripts/sync-css-openapi.py --check
-```
-
-A documentação de integração do módulo Flow ainda não está incluída nesta versão.
+O conjunto Flow fica exclusivamente em `docs/certillion/flow/`; seus campos, tokens
+e IDs não são aliases dos usados pelo CSS.
 
 ## Como instalar no seu assistente
 
@@ -72,13 +69,13 @@ simples e portável de configurar:
 2. Crie (ou edite) um `AGENTS.md` na raiz apontando para os arquivos:
 
    ```markdown
-   ## Integração Certillion CSS (assinatura digital ICP-Brasil)
-   Ao trabalhar na integração com a API do módulo CSS, seguir:
-   - Regras: docs/certillion/css/certillion-skill.md
-   - Guia conceitual: docs/certillion/css/certillion-api-reference.md
-   - Schema (fonte canônica de endpoints): docs/certillion/css/certillion-openapi.yaml
-   - Exemplos de código: docs/certillion/css/certillion-examples-<linguagem>.md
-   A skill define as regras (R1–R16); o schema é a fonte de verdade para campos e tipos.
+   ## Integração Certillion
+   Identificar o módulo com docs/certillion/certillion-module-selection.md.
+   - CSS: seguir docs/certillion/css/certillion-skill.md.
+     Contrato: docs/certillion/css/certillion-openapi.yaml.
+   - Flow: seguir docs/certillion/flow/certillion-flow-skill.md.
+     Contrato: docs/certillion/flow/certillion-flow-openapi.yaml.
+   Consultar a referência, os fluxos e o exemplo da linguagem apenas quando necessários.
    ```
 
 3. Para o Claude Code (que não lê `AGENTS.md` diretamente), referencie-o no `CLAUDE.md`
@@ -98,20 +95,22 @@ simples e portável de configurar:
 
 ### Notas por harness
 
-- **Claude Code:** o `certillion-skill.md` já tem formato de Skill (frontmatter `name`/`description`)
-  e pode ser usado como skill, para carregamento sob demanda.
+- **Claude Code:** os documentos de skill têm frontmatter `name`/`description`.
+  Para carregamento por instruções, usar a referência ao `AGENTS.md` acima.
 - **Cursor:** para regra dedicada, use `.cursor/rules/certillion.mdc` com frontmatter
   (`description`, `alwaysApply`). Use `alwaysApply: true` se o projeto for dedicado à integração.
 - **Windsurf:** arquivos de regra têm limite de tamanho — a regra deve **apontar** para os arquivos
   do kit, não copiá-los.
 - **GitHub Copilot:** para regras por tipo de arquivo, use `.github/instructions/*.instructions.md`
   com frontmatter `applyTo`.
-- **Antigravity:** como suporta o formato `SKILL.md`, o `certillion-skill.md` funciona como skill
-  nativa em `.agents/skills/`.
+- **Formato nativo `SKILL.md`:** os nomes canônicos deste repositório são
+  `certillion-skill.md` e `certillion-flow-skill.md`. Para empacotar como skill nativa,
+  usar `SKILL.md` no diretório de destino e incluir as referências com links relativos
+  resolvidos. Copiar somente o arquivo principal não torna o conjunto independente.
 - **Lovable:** dois caminhos — (1) conecte o projeto ao GitHub (Settings → Connectors → GitHub,
   instale o Lovable GitHub App, sync bidirecional na branch `main`) e coloque `AGENTS.md` na raiz
   do repositório: o Lovable lê o arquivo automaticamente a cada request; (2) sem GitHub, cole o
-  conteúdo de `certillion-skill.md` + as principais regras do `certillion-api-reference.md` no
+  conteúdo da skill do módulo escolhido + as regras pertinentes da sua referência no
   **Project Knowledge** do projeto (Settings → Knowledge — limite de 10 000 caracteres; a skill
   sozinha cabe com margem para regras complementares). O Project Knowledge é enviado em todas as
   conversas — não é necessário repetir as instruções a cada sessão.
@@ -119,11 +118,12 @@ simples e portável de configurar:
 ## Por onde começar
 
 1. Copie `docs/certillion/` para o seu projeto e configure o `AGENTS.md` (acima).
-2. Solicite suas credenciais de teste em https://certillion.com/fale-conosco-certillion/.
-   Nossa equipe envia as credenciais e orienta sobre as condições de uso no período de integração.
-3. Mantenha a flag `CERTILLION_ENV = 'test'` durante o desenvolvimento (a skill orienta a IA a
-   incluir o guardrail de ambiente automaticamente).
-4. Peça a integração ao seu assistente — ele já conhece o fluxo, o custo e os pontos de atenção.
+2. Confirmar o módulo/ambiente e obter as credenciais adequadas à integração em
+   https://certillion.com/fale-conosco-certillion/.
+3. No CSS, seguir o guardrail de ambiente da skill. No Flow, configurar a conta,
+   participantes controlados e callback público; não importar limites comerciais CSS.
+4. Pedir ao assistente a integração do módulo escolhido. Os exemplos usam IDs
+   persistidos para retomar operações sem repetir chamadas já aceitas.
 
 ## Fontes
 
@@ -132,7 +132,8 @@ da plataforma e **também na documentação oficial da API**, disponível em:
 
 - Visão geral da API: https://certillion.com/certillion-api/documentacao-de-api/
 - Tutoriais: https://certillion.com/certillion-api/tutoriais/
-- Referência da API: https://certillion.com/certillion-api/api-certillion-assinatura-digital-documentacao/
+- Referência CSS: https://certillion.com/certillion-api/api-certillion-assinatura-digital-documentacao/
+- Referência Flow: https://documenter.getpostman.com/view/14694000/2sA3JJAP5a
 
 ## Suporte
 
@@ -140,4 +141,4 @@ Dúvidas durante a integração: https://certillion.com/fale-conosco-certillion/
 
 ---
 
-*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.5-beta.*
+*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.6-beta.*

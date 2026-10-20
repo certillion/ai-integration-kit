@@ -1,18 +1,16 @@
 ---
 name: certillion-api
 description: >
-  Use esta skill para tarefas que envolvam a API do módulo CSS (Certillion Signature Server) de assinatura digital ICP-Brasil.
-  Gatilhos: implementar ou depurar integração com Certillion CSS, assinar documentos digitalmente via
-  API REST, autenticar usuários com certificado ICP-Brasil, trabalhar com PSCs (VIDAAS, SafeID,
-  RemoteID, NeoID, CERTILLION_SIGNER), otimizar custo de assinaturas, ou gerar/validar QR Code
-  de prescrições digitais. Também usar quando o desenvolvedor mencionar: client_token, authorize,
-  psc-info, document upload, signature, transaction_id, code_challenge, code_verifier, PKCE,
-  PAdES, CAdES, XAdES, manager_id, manager_secret, scope/signature_session, lifetime ou duração
-  de sessão (reaproveitar token / não reautenticar a cada documento), certificado local
-  (A1/.pfx, A3, Assinador Certillion, cloud-ws), ou outro endpoint da API CSS. Não aplicar ao contrato do módulo Flow.
-version: "0.5-beta"
-language: pt-BR
-classification: público — distribuível a clientes e parceiros
+  Implementar e depurar integrações com o módulo CSS (Certillion Signature Server):
+  OAuth/PKCE, PSCs, upload, assinatura e validação ICP-Brasil, sessão reutilizável,
+  certificado local e app Assinador. Aplicar a chamadas CSS como client_token,
+  authorize, document e signature. Para processos com signatários e process_id
+  do módulo Flow, usar a skill certillion-flow-api.
+metadata:
+  version: "0.6-beta"
+  language: pt-BR
+  classification: público
+
 ---
 
 # Skill — Integração com a API Certillion CSS
@@ -63,6 +61,8 @@ tipo, valor de enum, código de erro), o **`certillion-openapi.yaml` é a fonte 
 A skill, o guia e os exemplos não duplicam essas tabelas — apontam para o YAML. Em caso de
 divergência, o YAML prevalece.
 
+Se o módulo não estiver claro, consultar o [guia CSS/Flow](../certillion-module-selection.md).
+
 Ao gerar código, partir do exemplo da linguagem-alvo (`certillion-examples-*.md`) e aplicar as
 regras desta skill, usando os tipos do YAML em vez de inferir estruturas.
 
@@ -101,19 +101,27 @@ Se o código já está em produção e pede para voltar a teste:
 
 ### R2 — Separar obrigatoriamente os 3 passos de assinatura
 
-Nunca encapsular upload + assinar + download em um único método. Persistir os IDs entre passos:
+Implementar upload, assinatura e download como operações independentes. Um orquestrador
+pode coordená-las, desde que persista o progresso e permita retomar cada etapa:
 
 ```
 document_hash  ← retornado pelo POST /document (usar no POST /signature)
 transaction_id ← valor de signatures[n].transaction no POST /signature (usar no GET /document/{id})
 ```
 
-Em caso de falha, retentar **somente o passo que falhou**:
+Após uma rejeição confirmada e corrigida, retentar **somente o passo correspondente**:
 - Upload falhou → repetir POST /document
 - Assinatura falhou → repetir POST /signature com o document_hash anterior
 - Download falhou → repetir GET /document/{transaction_id}
 
 Nunca reiniciar o fluxo do início se apenas o download falhou.
+
+Timeout, desconexão ou HTTP 5xx após enviar `/signature` deixam o resultado
+indeterminado: a assinatura pode ter sido processada. Salvar a intenção antes da
+chamada e os IDs de cada entrada recebida; não repetir automaticamente as entradas
+aceitas nem o POST sem reconciliar o resultado. Em lote, examinar as respostas por
+entrada. Quando não houver ID suficiente para recuperação, interromper a repetição
+e apresentar diagnóstico. Não presumir suporte a chave de idempotência.
 
 `transaction_id` acima é nome de variável interna: a chave JSON retornada é
 **`transaction`**, inteiro. No download, enviar `Accept: application/octet-stream`;

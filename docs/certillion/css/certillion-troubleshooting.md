@@ -6,7 +6,7 @@
 > time Certillion.
 
 > Guia de diagnóstico para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.5-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.6-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -139,6 +139,21 @@ Antes de abrir suporte, identifique o passo e tente o auto-fix. A lista completa
 | **(5) `POST /oauth/signature`** | `250 INVALID_ACCESS_TOKEN` / `401`; `249`; `212`/`218`; `223`; `301`; `400`; `6xx` | Uso do **token errado** (precisa ser o de assinatura, não o de sistema); sessão expirada; crédito do PSC; certificado | Usar o token de `/oauth/token`; tratar expiração (re-autorizar passos 3–4); backoff em `301`/rate limit |
 | **(6) `GET /oauth/document/{id}`** | `711 DOCUMENT_NOT_FOUND`; `712 WRONG_DOCUMENT_HASH` | `transaction_id` errado; hash divergente | Repetir o download com o `transaction_id` correto — **sem** reassinar (Regra 1) |
 | **(6) Download com HTTP 406** | `Could not find acceptable representation` | Header Accept incompatível com retorno binário, como application/json | Usar Accept application/octet-stream e repetir só o download. Ler o ID em signatures[n].transaction |
+
+### Resultado indeterminado e operações administrativas
+
+- Timeout/desconexão/HTTP 5xx depois de enviar `/signature`: preservar IDs e intenção;
+  conferir entradas retornadas e reconciliar antes de nova assinatura. A espera pelo
+  app no celular não autoriza emitir outra assinatura.
+- HTTP 400/código 205 em `/token-command`: preservar também o `name` real (pode ser
+  `INTERNAL_ERROR`), pois código numérico isolado não explica a causa. Não considerar
+  o token revogado após erro; eliminar a referência local não encerra a sessão remota.
+- HTTP 400/`INVALID_ACCESS_TOKEN` em `/application`: confirmar credencial/perfil
+  administrativo; não atribuir o erro a email ou CNPJ ausentes sem resposta específica.
+- HTTP 500 em `/health-check`: a causa pode não ser identificada pela resposta;
+  conferir o fluxo solicitado e recolher horário/HTTP/corpo redigido para suporte.
+- HTTP 501 em `/application_cert`: endpoint descontinuado; não usar para cadastrar
+  uma aplicação. Corpo vazio pode ser barrado com HTTP 400 antes desse retorno.
 
 ### 4.2 Por família de código (quem resolve)
 
@@ -369,4 +384,4 @@ function renderCertillionError(raw, httpStatus, container) {
 *Guia de troubleshooting baseado na documentação oficial Certillion, tutoriais, e-mail de
 integração e na experiência da equipe e-Sec. Lista canônica de códigos e mecânica de endpoints:
 `certillion-openapi.yaml`; resumo conceitual de erros: `certillion-api-reference.md` (Seção 9);
-regra de tratamento de erro: `certillion-skill.md` (Regra 13). Documento público — versão 0.5-beta.*
+regra de tratamento de erro: `certillion-skill.md` (Regra 13). Documento público — versão 0.6-beta.*

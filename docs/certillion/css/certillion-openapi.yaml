@@ -1,8 +1,8 @@
 openapi: "3.0.3"
 
 info:
-  title: Certillion API
-  version: "0.5-beta"
+  title: Certillion CSS — API de assinatura
+  version: "0.6-beta"
   description: >
     Documento público — distribuível a clientes e parceiros integradores. Não contém
     informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
@@ -73,6 +73,12 @@ components:
         ATENÇÃO: este token pode ser cancelado pelo PSC antes do prazo solicitado.
         Monitorar expiração e reiniciar o fluxo de autorização se necessário.
 
+    BearerAdministrativeToken:
+      type: http
+      scheme: bearer
+      description: >
+        Perfil administrativo para cadastro. Obter credencial/configuração próprias
+        com a Certillion; um token de integração pode ser rejeitado neste endpoint.
   schemas:
 
     # ── STATUS ────────────────────────────────────────────────────────────────
@@ -92,7 +98,7 @@ components:
             140 = SIGNATURE_VALID (assinatura válida — verificar por entrada em lotes),
             249 = TOKEN_VALIDITY_INVALID (token expirado — reiniciar /authorize + /token),
             250 = INVALID_ACCESS_TOKEN,
-            301 = TIMEOUT (aguardar e repetir),
+            301 = TIMEOUT (em assinatura, reconciliar o resultado antes de repetir),
             711 = DOCUMENT_NOT_FOUND (documento expirou após 48h — re-upload necessário).
           example: 100
         name:
@@ -101,6 +107,7 @@ components:
           example: REQUEST_OK
         detail:
           type: string
+          nullable: true
           description: Mensagem descritiva adicional.
           example: Request accepted by the receiver.
 
@@ -1044,6 +1051,49 @@ components:
           description: E-mail para contato em caso de indisponibilidade ou mudança de versão.
           example: "suporte@seudominio.com.br"
 
+    ApplicationRegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: nome/descrição da aplicação
+        comments:
+          type: string
+          description: observações gerais de uso da aplicação
+        redirect_uris:
+          type: array
+          description: URI’s autorizadas para redirecionamento (para serviços de código de autorização)
+          items:
+            type: string
+        email:
+          type: string
+          description: e-mail para suporte em caso de indisponibilidade, mudança deversão, entre outros
+        host:
+          type: string
+          description: Host único da aplicação
+        legal_identifier:
+          type: string
+          description: CNPJ da empresa que deseja se cadastrar
+      description: Cadastro administrativo. Obter perfil/credencial apropriados junto à Certillion; não
+        inferir os requisitos de cadastro a partir de erro INVALID_ACCESS_TOKEN.
+    ApplicationRegisterResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: identificador da aplicação
+        client_secret:
+          type: string
+          description: segredo associado à aplicação
+        status:
+          type: string
+          description: Status textual da operação (success ou erro), distinto de StatusObject.
+        message:
+          type: string
+          description: mensagem com informações adicionais
+      description: Envelope próprio de cadastro, com status textual. Não confundir com StatusObject. Credenciais
+        retornadas são segredos e não devem aparecer em logs.
+
     PrepareSignerRequest:
       type: object
       description: >
@@ -1586,8 +1636,10 @@ paths:
         Requer obrigatoriamente o token de assinatura (BearerSigningToken).
 
         TRATAMENTO CORRETO DE ERROS — regra crítica de custo:
-        Se este passo falhar: retentar apenas este POST com o document_hash anterior.
-        NÃO re-fazer o upload.
+        Após rejeição conclusiva e correção da causa, retentar apenas este POST com
+        o document_hash anterior, sem novo upload. Timeout, desconexão ou HTTP 5xx
+        podem deixar a assinatura processada sem resposta; persistir intenção e
+        resultados por entrada e reconciliar antes de qualquer nova assinatura.
         Se o passo de download falhar após este: ir direto ao GET /document/{id}.
         NÃO repetir esta chamada.
 
@@ -1708,7 +1760,7 @@ paths:
       tags: [Tokens]
       summary: Invalida um token de acesso ativo
       description: >
-        Cancela o token de assinatura ativo. Quando suportado pelo PSC,
+        Solicita o cancelamento do token de assinatura ativo. Quando suportado pelo PSC,
         o cancelamento é propagado ao provedor.
         Verificar o status retornado antes de considerar o token invalidado.
         Em caso de erro, não presumir que a sessão foi encerrada.
@@ -1728,7 +1780,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/StatusObject"
         "400":
-          description: Problema na execução do comando.
+          description: >
+            Problema na execução do comando. Pode retornar code=205 e name=INTERNAL_ERROR.
+            Não presumir invalidação após erro nem deduzir a causa só pelo número.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusObject"
+              example: {code: 205, name: INTERNAL_ERROR, detail: null}
         "401":
           description: Token inválido ou expirado.
 
@@ -1757,4 +1816,102 @@ paths:
         "401":
           description: Token inválido ou expirado.
         "500":
+          description: Falha interna.
+
+  /oauth/version:
+    get:
+      tags:
+      - Sistema
+      summary: Consultar versão do servidor CSS
+      description: Versão de runtime; não é necessariamente a versão deste documento OpenAPI.
+      responses:
+        '200':
+          description: Identificador textual da versão.
+          content:
+            application/json:
+              schema:
+                type: string
+              example: 1.12.3
+  /oauth/health-check:
+    get:
+      tags:
+      - Sistema
+      summary: Consultar saúde do serviço
+      description: Um HTTP500 não identifica por si só a causa nem comprova falha nos parâmetros do
+        fluxo de assinatura.
+      responses:
+        '200':
+          description: Resposta saudável documentada pelo serviço.
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Falha interna. Pode usar application/problem+json; preservar diagnóstico redigido.
+  /oauth/application_cert:
+    post:
+      tags:
+      - Aplicação
+      summary: Cadastro por certificado descontinuado
+      deprecated: true
+      description: Não usar em novas integrações. Retorna HTTP501 de descontinuação com corpo não vazio;
+        corpo vazio pode receber HTTP400 antes disso. Cadastro ativo usa /oauth/application e perfil
+        administrativo.
+      requestBody:
+        required: false
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          application/jwt:
+            schema:
+              type: string
+      responses:
+        '501':
+          description: Endpoint descontinuado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRegisterResponse'
+              example:
+                status: Error - NOT_IMPLEMENTED
+                message: Discontinued endpoint.
+        '400':
+          description: Requisição barrada antes da resposta de descontinuação, por exemplo por corpo
+            vazio.
+  /oauth/application:
+    post:
+      tags:
+      - Aplicação
+      summary: Cadastrar aplicação com perfil administrativo
+      description: Confirmar credencial/permissão administrativa antes do uso. HTTP400 com status textual
+        INVALID_ACCESS_TOKEN não identifica campos de cadastro ausentes. Não usar essa chamada como
+        parte necessária de cada assinatura.
+      security:
+      - BearerAdministrativeToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationRegisterRequest'
+      responses:
+        '200':
+          description: Cadastro documentado; requer perfil apropriado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRegisterResponse'
+        '400':
+          description: Falha de cadastro/autorização; interpretar status textual e message.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRegisterResponse'
+              example:
+                status: INVALID_ACCESS_TOKEN
+        '401':
+          description: Credencial administrativa rejeitada.
+        '500':
           description: Falha interna.

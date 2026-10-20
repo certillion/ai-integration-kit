@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.5-beta | Linguagem: Node.js 18+ / TypeScript
+> Versão: 0.6-beta | Linguagem: Node.js 18+ / TypeScript
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -192,26 +192,40 @@ async function downloadDocument(transactionId: string, token: string): Promise<B
 }
 ```
 
-## Orquestração com retentativa por passo (R1, R2)
+## Orquestração com estado persistido (R1, R2)
+
+Carregar o estado salvo para o mesmo documento, conta e servidor. `save` deve gravar
+em armazenamento durável antes de retornar; não recriar um estado vazio para repetir
+uma execução. O marcador de intenção permanece se o resultado do POST for incerto.
+Só liberá-lo após reconciliar ou confirmar que a requisição foi rejeitada. Nenhuma
+retentativa de assinatura é automática. Os tokens não pertencem ao estado abaixo.
 
 ```typescript
-// ⚠️ Os IDs são persistidos entre passos — em caso de falha, retentar
-// APENAS o passo que falhou, nunca reiniciar o fluxo do início.
+type SigningState = {
+  documentHash?: string; transactionId?: string;
+  uploadAttempted?: boolean; signatureAttempted?: boolean;
+};
 async function signDocument(
-  pdf: Buffer, signingToken: string
+  pdf: Buffer, signingToken: string, state: SigningState,
+  save: (snapshot: SigningState) => Promise<void>
 ): Promise<Buffer> {
   avisarAmbienteTeste();
-
   const clientToken = await getClientToken();
-
-  // Passo 2 — se falhar, repetir só este (novo upload)
-  const documentHash = await uploadDocument(pdf, clientToken);
-
-  // Passo 5 — se falhar, repetir só este com o documentHash existente (NÃO re-upload)
-  const transactionId = await requestSignature(documentHash, signingToken);
-
-  // Passo 6 — se falhar, repetir só este com o transactionId existente (NÃO re-assinar)
-  return await downloadDocument(transactionId, clientToken);
+  if (!state.transactionId) {
+    if (!state.documentHash) {
+      if (state.uploadAttempted) throw new Error('Upload anterior sem resultado conciliado.');
+      state.uploadAttempted = true;
+      await save({ ...state });
+      state.documentHash = await uploadDocument(pdf, clientToken);
+      await save({ ...state });
+    }
+    if (state.signatureAttempted) throw new Error('Assinatura anterior sem resultado conciliado.');
+    state.signatureAttempted = true;
+    await save({ ...state });
+    state.transactionId = await requestSignature(state.documentHash, signingToken);
+    await save({ ...state });
+  }
+  return await downloadDocument(state.transactionId, clientToken);
 }
 ```
 

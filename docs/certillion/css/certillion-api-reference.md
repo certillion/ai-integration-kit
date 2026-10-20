@@ -4,7 +4,7 @@
 > Não contém informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 
 > Guia conceitual para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.5-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.6-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -274,13 +274,20 @@ const transactionId = await solicitarAssinatura(documentHash);
 const pdfAssinado = await downloadDocumento(transactionId);
 ```
 
-Se qualquer passo falhar, **retentar apenas esse passo** usando o ID já obtido:
+Após rejeição confirmada e correção da causa, **retentar apenas esse passo** usando o ID já obtido:
 
 ```
 Passo 2 falhou? → repetir POST /document (novo upload é necessário)
 Passo 5 falhou? → repetir POST /signature com o document_hash anterior (NÃO re-upload)
 Passo 6 falhou? → repetir GET /document/{transaction_id} (NÃO re-assinar)
 ```
+
+Se `/signature` terminou sem resposta conclusiva, não repetir o POST automaticamente.
+Persistir a intenção antes da chamada e cada `signatures[].transaction` recebido.
+Uma falha no download usa a transação existente. Um resultado indeterminado sem ID
+exige reconciliação/diagnóstico; a ausência de resposta não prova que a assinatura
+não aconteceu. Os exemplos por linguagem recebem estado e função de persistência
+para permitir essa recuperação.
 
 ### ⚠️ Regra 2 — Em lotes, retomar a partir do item que falhou
 

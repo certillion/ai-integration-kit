@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.5-beta | Linguagem: PHP 8.0+
+> Versão: 0.6-beta | Linguagem: PHP 8.0+
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -219,25 +219,34 @@ function downloadDocument(string $transactionId, string $token): string {
 }
 ```
 
-## Orquestração com retentativa por passo (R1, R2)
+## Orquestração com estado persistido (R1, R2)
+
+Carregar o estado salvo para o mesmo documento, conta e servidor. `save` deve gravar
+em armazenamento durável antes de retornar; não recriar um estado vazio para repetir
+uma execução. O marcador de intenção permanece se o resultado do POST for incerto.
+Só liberá-lo após reconciliar ou confirmar que a requisição foi rejeitada. Nenhuma
+retentativa de assinatura é automática. Os tokens não pertencem ao estado abaixo.
 
 ```php
 <?php
-// ⚠️ Os IDs são persistidos entre passos — em caso de falha, retentar
-// APENAS o passo que falhou, nunca reiniciar o fluxo do início.
-function signDocument(string $pdfPath, string $signingToken): string {
+function signDocument(string $pdfPath, string $signingToken, array &$state, callable $save): string {
     avisarAmbienteTeste();
-
     $clientToken = getClientToken();
-
-    // Passo 2 — se falhar, repetir só este (novo upload)
-    $documentHash = uploadDocument($pdfPath, $clientToken);
-
-    // Passo 5 — se falhar, repetir só este com o $documentHash existente (NÃO re-upload)
-    $transactionId = requestSignature($documentHash, $signingToken);
-
-    // Passo 6 — se falhar, repetir só este com o $transactionId existente (NÃO re-assinar)
-    return downloadDocument($transactionId, $clientToken);
+    if (empty($state['transaction_id'])) {
+        if (empty($state['document_hash'])) {
+            if (!empty($state['upload_attempted'])) throw new RuntimeException('Upload anterior sem resultado conciliado.');
+            $state['upload_attempted'] = true;
+            $save($state);
+            $state['document_hash'] = uploadDocument($pdfPath, $clientToken);
+            $save($state);
+        }
+        if (!empty($state['signature_attempted'])) throw new RuntimeException('Assinatura anterior sem resultado conciliado.');
+        $state['signature_attempted'] = true;
+        $save($state);
+        $state['transaction_id'] = requestSignature($state['document_hash'], $signingToken);
+        $save($state);
+    }
+    return downloadDocument($state['transaction_id'], $clientToken);
 }
 ```
 

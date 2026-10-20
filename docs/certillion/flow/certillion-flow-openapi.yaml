@@ -1,0 +1,857 @@
+openapi: 3.0.3
+info:
+  title: Certillion Flow — API de processos de assinatura
+  version: 0.6-beta
+  description: Contrato público do módulo Flow. Identificadores e autenticação são próprios deste módulo.
+    Códigos de aplicação, códigos HTTP e estados de processo são camadas distintas. Uma resposta de criação
+    não é conclusão; preservar IDs e recuperar por etapa. Este documento não define preços, quotas, logout
+    ou idempotência.
+servers:
+- url: https://flow.certillion.com/flow/restful
+  description: Base HTTPS. Para outro ambiente, usar endereço oficial fornecido para a conta; não inferir
+    ambiente pela porta.
+tags:
+- name: Autenticação
+- name: Documentos
+- name: Processos
+- name: Modelos
+security:
+- FlowAccessToken: []
+paths:
+  /application/login:
+    get:
+      tags:
+      - Autenticação
+      summary: Autenticar a conta Flow
+      operationId: flowLogin
+      description: Conta Flow cadastrada por email/senha. Conta apenas de login social pode exigir configuração
+        própria para API. Uma sessão pode atender várias chamadas; validade em segundos. Não autenticar
+        por documento.
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: Token recebido; verificar HTTP e status de aplicação.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                status: &id001
+                  code: 100
+                  name: SUCCESS
+                  detail: Operação realizada com sucesso
+                access_token: <token>
+                validity: 900
+      security:
+      - FlowCredentials: []
+      parameters:
+      - name: validity
+        in: query
+        required: false
+        description: Duração solicitada em segundos. Limites/default descritos pela API; usar validity
+          retornada para expiração.
+        schema:
+          type: integer
+          format: int32
+          minimum: 900
+          maximum: 86400
+          default: 900
+  /application/upload:
+    post:
+      tags:
+      - Documentos
+      summary: Enviar um PDF
+      operationId: flowUpload
+      description: Envio multipart de um PDF por chamada. Persistir document_id. O mesmo ID não deve ser
+        usado em outro processo; não repetir upload para recuperar apenas consulta ou download.
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: PDF recebido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                status: *id001
+                document_id: 11111111-1111-4111-8111-111111111111
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Arquivo PDF; deixar a biblioteca compor boundary e Content-Type multipart.
+      x-application-errors:
+        '400': CORRUPTED_PDF
+        '401': ONLY_PDF_ALLOWED
+  /application/signature-request:
+    post:
+      tags:
+      - Processos
+      summary: Criar processo de assinatura
+      operationId: flowCreateProcess
+      description: Cria um processo e pode enviar convites. Resposta aceita não significa assinatura concluída.
+        Não há chave de idempotência documentada; timeout sem process_id exige reconciliação antes de
+        nova tentativa.
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: Processo criado; persistir process_id e acompanhar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureResponse'
+              example:
+                status: *id001
+                process_id: 22222222-2222-4222-8222-222222222222
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignatureRequest'
+            example:
+              title: Contrato de integração
+              type: DIGITAL_SIGNATURE
+              callback_url: https://integracao.example.invalid/flow/callback
+              documents:
+              - 11111111-1111-4111-8111-111111111111
+              signers:
+              - name: Participante
+                email: participante@example.invalid
+      x-application-errors:
+        '500': INVALID_NAME
+        '501': INVALID_EMAIL
+        '502': INVALID_DEADLINE
+        '503': DOCUMENT_NOT_FOUND
+        '504': EMPTY_MANDATORY_FIELDS
+        '505': EMPTY_VISUAL_SIGNATURE_FIELDS
+        '506': SIGNATURE_MODEL_NOT_FOUND
+        '507': INVALID_VISUAL_SIGNATURE_REQUEST
+        '508': WRONG_DEADLINE_SIGNER
+        '509': WRONG_REMINDER_DEADLINE
+        '510': RETRIEVE_DOCUMENT_EXCEPTION
+        '511': INVALID_PAGE
+        '512': OVERFLOW_VISUAL_SIGNATURE
+        '513': OVERLAY_VISUAL_SIGNATURE
+        '514': INCOMPLETE_POSITION_VISUAL_SIGNATURE
+        '515': NO_SPACE_DOCUMENT
+        '516': NOT_UNIQUE_DEADLINE
+        '517': INVALID_CALLBACK_URL
+        '518': INVALID_SIGNATURE_TYPE
+        '519': INVALID_DOCUMENT
+      callbacks:
+        completion:
+          '{$request.body#/callback_url}':
+            post:
+              summary: Notificação de conclusão ao integrador
+              description: Receber, correlacionar com processo conhecido e reconciliar por consulta. Não
+                há contrato de autenticação, assinatura do evento, timeout ou política de reentrega definido
+                aqui. A segurança FlowAccessToken protege chamadas à API, não define autenticação do callback.
+              security: []
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/ProcessCallback'
+                    example:
+                      process_id: 22222222-2222-4222-8222-222222222222
+                      status: FINALIZED_WITH_SUCCESS
+              responses:
+                '200':
+                  description: Recebido pelo integrador. Escolher política de confirmação conforme contrato
+                    de entrega acordado.
+  /application/process:
+    get:
+      tags:
+      - Processos
+      summary: Consultar processos
+      operationId: flowGetProcesses
+      description: Consultar id para acompanhar processo conhecido. Quando não houver resultados, process_list
+        pode ser null. Filtros e estados de resposta têm vocabulários distintos. Consulta sem filtros
+        usa período padrão documentado; ausência de item não prova que uma criação falhou.
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: Resultado da consulta.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessResponse'
+              example:
+                status: *id001
+                process_list:
+                - title: Contrato de integração
+                  id: 22222222-2222-4222-8222-222222222222
+                  status: IN_PROGRESS
+                  documents:
+                  - 11111111-1111-4111-8111-111111111111
+                  signers:
+                  - name: Participante
+                    email: participante@example.invalid
+                    status: SENT
+      parameters:
+      - name: id
+        in: query
+        schema:
+          type: string
+        description: ID do processo conhecido.
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/ProcessStatus'
+      - name: period
+        in: query
+        schema:
+          $ref: '#/components/schemas/Period'
+        description: Usar os nomes completos. Aliases 15_DAYS/1_MONTH/6_MONTHS/1_YEAR não são equivalentes.
+      x-application-errors:
+        '600': INVALID_PROCESS_STATUS
+        '601': INVALID_PERIOD
+        '602': INVALID_PROCESS_ID
+  /application/register-signature-model:
+    post:
+      tags:
+      - Modelos
+      summary: Cadastrar modelo visual
+      operationId: flowCreateSignatureModel
+      description: Cadastrar modelo uma vez e reutilizar seu ID. Não cadastrar novamente após resultado
+        incerto sem reconciliar pela listagem. Cadastro retorna HTTP 201 e modelo aninhado.
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '201':
+          description: Modelo criado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureModelResponse'
+              example:
+                status: *id001
+                signature_model:
+                  id: '123'
+                  SignatureModel:
+                    name: Modelo do integrador
+                    model_type: TEXT_ONLY
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignatureModel'
+            example:
+              name: Modelo do integrador
+              model_type: TEXT_ONLY
+              width: 150
+              height: 75
+              text_size: 6
+              text_alignment: LEFT
+      x-application-errors:
+        '200': INVALID_MODEL_NAME
+        '201': DUPLICATE_MODEL_NAME
+        '203': MODEL_TYPE_INVALID
+        '204': IMAGE_POSITION_INVALID
+        '205': TEXT_FONT_INVALID
+        '206': TEXT_ALIGNMENT_INVALID
+  /application/models:
+    get:
+      tags:
+      - Modelos
+      summary: Listar modelos visuais
+      operationId: flowGetModels
+      description: 'A resposta contém signature_model_list com objetos {id: string, SignatureModel: objeto}.'
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: Modelos da conta.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureModelListResponse'
+              example:
+                status: *id001
+                signature_model_list: []
+  /application/download/{process_id}:
+    get:
+      tags:
+      - Documentos
+      summary: Baixar resultado do processo
+      operationId: flowDownloadProcess
+      description: 'Retorna ZIP binário, não JSON/Base64 nem um PDF isolado. Enviar Accept: application/octet-stream.
+        Em HTTP403, conferir estado; repetir só consulta/download, sem recriar processo. Não presumir
+        presença de cópia original separada em processos eletrônicos.'
+      responses:
+        '400':
+          $ref: '#/components/responses/FlowError'
+        '401':
+          $ref: '#/components/responses/FlowError'
+        '500':
+          $ref: '#/components/responses/FlowError'
+        default:
+          $ref: '#/components/responses/FlowError'
+        '200':
+          description: ZIP com os arquivos do processo. Integridade do ZIP e validade criptográfica são
+            verificações diferentes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Processo ainda não finalizado ou finalizado sem sucesso; consultar estado.
+        '404':
+          description: Processo não encontrado.
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ID retornado por signature-request; não é ID de documento nem transação CSS.
+components:
+  securitySchemes:
+    FlowCredentials:
+      type: apiKey
+      in: header
+      name: credentials
+      description: Valor Basic seguido de espaço e Base64(email:senha). Header chama-se credentials, não
+        Authorization. Somente no login e por HTTPS.
+    FlowAccessToken:
+      type: apiKey
+      in: header
+      name: access_token
+      description: 'Valor completo: Bearer <token>. Não usar Authorization: Bearer nem token sem prefixo.
+        Uma sessão atende múltiplas chamadas até expirar.'
+  responses:
+    FlowError:
+      description: Erro HTTP e/ou de aplicação. Não interpretar códigos de aplicação como HTTP. Timeout/5xx
+        de POST pode deixar resultado indeterminado.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: '#/components/schemas/FlowError'
+            - $ref: '#/components/schemas/ProblemDetails'
+  schemas:
+    LoginResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        access_token:
+          type: string
+          description: Token de acesso; tratar como segredo e não registrar em logs.
+          writeOnly: false
+        validity:
+          type: integer
+          format: int32
+          description: Validade efetiva retornada em segundos, como inteiro. Calcular expiração a partir
+            desta resposta; não da duração solicitada.
+          minimum: 1
+      required:
+      - status
+      - access_token
+      - validity
+    UploadResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        document_id:
+          type: string
+          description: Identificador textual a persistir. Vinculado a um único processo; novo processo
+            exige novo upload.
+      required:
+      - status
+      - document_id
+    SignatureRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Título do processo
+          minLength: 1
+        type:
+          $ref: '#/components/schemas/SignatureType'
+        deadline:
+          type: integer
+          description: Prazo geral em dias, de 1 a 30. Não combinar com prazos individuais dos signatários.
+          minimum: 1
+          maximum: 30
+        reminder_in:
+          allOf:
+          - $ref: '#/components/schemas/Reminder'
+          description: Preferir lembrete estritamente anterior ao prazo aplicável. A rejeição de igualdade
+            não é uniforme; não depender da aceitação desse limite. Efeito temporal deve ser verificado
+            no fluxo de negócio.
+        callback_url:
+          type: string
+          description: Obrigatória. URL pública controlada pelo integrador para notificações de conclusão.
+            Preferir HTTPS; localhost não é acessível ao Flow. A disponibilidade e a política de autenticação/reentrega
+            devem ser acordadas.
+          format: uri
+        documents:
+          type: array
+          description: Lista com o ids dos documentos a serem assinados
+          items:
+            type: string
+          minItems: 1
+        send_completion_email:
+          type: boolean
+          description: Enviar e-mail de conclusão para o solicitante Campo documentado para uso específico;
+            não ativar automaticamente nem inferir comportamento de entrega pelo simples aceite.
+          default: false
+        certillion_site_request:
+          type: boolean
+          description: Solicitação de assinatura feita pelo site Certillion Campo documentado para uso
+            específico; não ativar automaticamente nem inferir comportamento de entrega pelo simples aceite.
+          default: false
+        signers:
+          type: array
+          description: Lista de signatários
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Nome do signatário
+                minLength: 1
+              email:
+                type: string
+                description: E-mail do signatário
+                format: email
+              deadline:
+                description: Prazo individual
+                type: integer
+                minimum: 1
+                maximum: 30
+            required:
+            - name
+            - email
+          minItems: 1
+        stakeholders:
+          type: array
+          description: Lista de partes interessadas no processo
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Nome da parte interessada
+              email:
+                type: string
+                description: E-mail da parte interessada
+        visual_signature:
+          type: object
+          description: Para modalidades visíveis, associa modelo e cada par documento/signatário. A aceitação
+            da estrutura não comprova geometria final. Um HTTP 500 exige diagnóstico antes de repetir
+            a criação.
+          properties:
+            signature_model_id:
+              type: integer
+              format: int64
+              description: ID numérico do modelo. A resposta de cadastro/listagem usa id textual; validar
+                representação decimal e intervalo int64 antes da conversão.
+            visual_signature_detail:
+              type: array
+              description: Detalhes da assinatura visual
+              items:
+                type: object
+                properties:
+                  document_id:
+                    type: string
+                    description: id do documento
+                  signer_email:
+                    type: string
+                    description: E-mail do signatário
+                    format: email
+                  page_number:
+                    type: integer
+                    format: int32
+                    description: Número da página
+                  x_position:
+                    type: integer
+                    format: int32
+                    description: Posição X
+                  y_position:
+                    type: integer
+                    format: int32
+                    description: Posição Y
+                  real_signature:
+                    type: boolean
+                    default: false
+                    description: Campo documentado sem semântica adicional definida; omitir no fluxo mínimo.
+                required:
+                - document_id
+                - signer_email
+                description: Um item por par documento/signatário. Se informar posição, fornecer page_number,
+                  x_position e y_position juntos. Não assumir origem das coordenadas ou geometria em páginas
+                  rotacionadas.
+              minItems: 1
+          required:
+          - signature_model_id
+          - visual_signature_detail
+      required:
+      - title
+      - type
+      - documents
+      - signers
+      - callback_url
+      description: Cria um processo e pode enviar convites. Resposta aceita não significa assinatura concluída.
+        Não há chave de idempotência documentada; timeout sem process_id exige reconciliação antes de
+        nova tentativa.
+    SignatureResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        usage_alert:
+          type: string
+          description: Alerta de uso do plano do usuario
+          nullable: true
+        process_id:
+          type: string
+          description: Identificador do processo
+      required:
+      - status
+      - process_id
+    ProcessResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        process_list:
+          type: array
+          description: Lista de processos ou null quando não há resultados. Normalizar null para lista
+            vazia somente na iteração do cliente.
+          items:
+            $ref: '#/components/schemas/Process'
+          nullable: true
+      required:
+      - status
+      - process_list
+    Process:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Título do processo
+        id:
+          type: string
+          description: Identificador do processo
+        status:
+          type: string
+          description: Estado retornado pelo processo. IN_PROGRESS indica andamento; FINALIZED_WITH_SUCCESS
+            permite obter o resultado. Não confundir com valores dos filtros PENDING/SUCCESS. Preservar
+            outros estados sem convertê-los em sucesso.
+          x-extensible-enum:
+          - IN_PROGRESS
+          - FINALIZED_WITH_SUCCESS
+        documents:
+          type: array
+          description: IDs textuais de documentos, não objetos com nome.
+          items:
+            type: string
+        signers:
+          type: array
+          description: Lista de signatários do processo
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Nome do signatário
+              email:
+                type: string
+                description: E-mail do signatário
+              status:
+                type: string
+                description: Estado textual do participante. Pode retornar SENT ou SIGNED; não presumir
+                  o vocabulário do processo ou do filtro. Preservar outros valores.
+    SignatureModel:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nome do modelo
+          minLength: 1
+        model_type:
+          description: Tipo do modelo
+          allOf:
+          - $ref: '#/components/schemas/ModelType'
+        height:
+          type: integer
+          format: int32
+          default: 75
+          description: Altura do modelo
+          minimum: 50
+        width:
+          type: integer
+          format: int32
+          default: 150
+          description: Largura do modelo
+          minimum: 100
+        custom_text:
+          type: string
+          default: 'Assinado digitalmente por:'
+          description: Texto customizado
+        custom_text_name:
+          type: boolean
+          default: true
+          description: Exibir nome
+        custom_text_cpf:
+          type: boolean
+          default: true
+          description: Exibir CPF
+        custom_text_date:
+          type: boolean
+          default: true
+          description: Exibir data
+        image_position:
+          description: Posição da imagem
+          allOf:
+          - $ref: '#/components/schemas/ImagePosition'
+        text_font:
+          description: Fonte do texto
+          allOf:
+          - $ref: '#/components/schemas/TextFont'
+        text_size:
+          type: integer
+          format: int32
+          default: 6
+          description: Tamanho do texto
+          minimum: 1
+        text_padding:
+          type: integer
+          format: int32
+          default: 5
+          description: Espaçamento do texto
+          minimum: 0
+        text_alignment:
+          description: Alinhamento do texto
+          allOf:
+          - $ref: '#/components/schemas/TextAlignment'
+      required:
+      - name
+      description: Modelo visual. Campos opcionais usam defaults documentados. Dimensões em pontos; usar
+        text_size, text_alignment e BOTTOM (não text_font_size, text_alingment ou BOTTON).
+    PersistedSignatureModel:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID JSON string, preservado como recebido. Converter para int64 validado ao preencher
+            signature_model_id.
+        SignatureModel:
+          $ref: '#/components/schemas/SignatureModel'
+      required:
+      - id
+      - SignatureModel
+    SignatureModelResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        signature_model:
+          $ref: '#/components/schemas/PersistedSignatureModel'
+      required:
+      - status
+      - signature_model
+    SignatureModelListResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        signature_model_list:
+          type: array
+          description: Lista de modelos de assinatura
+          items:
+            $ref: '#/components/schemas/PersistedSignatureModel'
+      required:
+      - status
+      - signature_model_list
+    SignatureType:
+      type: string
+      description: Enum do tipo de assinatura
+      enum:
+      - DIGITAL_SIGNATURE
+      - DIGITAL_SIGNATURE_VISIBLE
+      - ELECTRONIC_SIGNATURE
+      - ELECTRONIC_SIGNATURE_VISIBLE
+    Reminder:
+      type: string
+      description: Prazo
+      default: NEVER
+      enum:
+      - NEVER
+      - ONE_DAY
+      - TWO_DAYS
+      - THREE_DAYS
+      - SEVEN_DAYS
+      - FOURTEEN_DAYS
+      - TWENTY_ONE_DAYS
+    Period:
+      type: string
+      description: Período
+      default: FIFTEEN_DAYS
+      enum:
+      - FIFTEEN_DAYS
+      - ONE_MONTH
+      - SIX_MONTHS
+      - ONE_YEAR
+    ProcessStatus:
+      type: string
+      description: Filtro de consulta (entrada), distinto do estado textual retornado (saída). Não enviar
+        IN_PROGRESS ou FINALIZED_WITH_SUCCESS como filtro sem contrato específico.
+      default: ALL
+      enum:
+      - PENDING
+      - SUCCESS
+      - CANCELED
+      - EXPIRED
+      - REJECTED
+      - ALL
+    ModelType:
+      type: string
+      description: Enum do tipo de modelo
+      default: IMAGE_WITH_TEXT
+      enum:
+      - IMAGE_ONLY
+      - TEXT_ONLY
+      - IMAGE_WITH_TEXT
+    TextAlignment:
+      type: string
+      description: Enum do tipo de alinhamento de texto
+      default: LEFT
+      enum:
+      - LEFT
+      - RIGHT
+      - CENTER
+    TextFont:
+      type: string
+      description: Enum do tipo de fonte
+      default: HELVETICA
+      enum:
+      - HELVETICA
+      - TIMES_ROMAN
+      - COURIER
+    ImagePosition:
+      type: string
+      description: Enum do tipo posicao de imagem
+      default: LEFT
+      enum:
+      - LEFT
+      - RIGHT
+      - TOP
+      - BOTTOM
+      - BACKGROUND
+      - NONE
+    Status:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Código do status
+        name:
+          type: string
+          description: Nome do status
+        detail:
+          type: string
+          description: Detalhes do status
+          nullable: true
+      required:
+      - code
+      - name
+      description: 'Status de aplicação. Sucesso das operações JSON: code=100, name=SUCCESS. Não é o HTTP
+        status. Em cadastro de modelo, code=200 pode indicar INVALID_MODEL_NAME.'
+    ProcessCallback:
+      type: object
+      description: Payload de notificação de conclusão. O recebimento deve disparar consulta pelo process_id
+        conhecido. Não prova origem nem validade da assinatura. Outros eventos/campos podem existir.
+      required:
+      - process_id
+      - status
+      properties:
+        process_id:
+          type: string
+          description: ID conhecido do processo.
+        status:
+          type: string
+          example: FINALIZED_WITH_SUCCESS
+          description: Estado informado pelo evento; reconciliar com consulta.
+    ProblemDetails:
+      type: object
+      description: Erros podem retornar Problem Details em vez do envelope status de aplicação. Preservar
+        apenas campos redigidos para diagnóstico.
+      required:
+      - status
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        path:
+          type: string
+        message:
+          type: string
+    FlowError:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'

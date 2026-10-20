@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.5-beta | Linguagem: Java 11+ (java.net.http.HttpClient)
+> Versão: 0.6-beta | Linguagem: Java 11+ (java.net.http.HttpClient)
 > Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -244,30 +244,42 @@ byte[] downloadDocument(HttpClient http, String transactionId, String token)
 }
 ```
 
-## Orquestração com retentativa por passo (R1, R2)
+## Orquestração com estado persistido (R1, R2)
+
+Carregar o estado salvo para o mesmo documento, conta e servidor. `save` deve gravar
+em armazenamento durável antes de retornar; não recriar um estado vazio para repetir
+uma execução. O marcador de intenção permanece se o resultado do POST for incerto.
+Só liberá-lo após reconciliar ou confirmar que a requisição foi rejeitada. Nenhuma
+retentativa de assinatura é automática. Os tokens não pertencem ao estado abaixo.
 
 ```java
-// ⚠️ Os IDs são persistidos entre passos — em caso de falha, retentar
-// APENAS o passo que falhou, nunca reiniciar o fluxo do início.
-byte[] signDocument(Path pdfPath, String signingToken) throws Exception {
+// Imports adicionais: java.util.Map e java.util.function.Consumer.
+byte[] signDocument(Path pdfPath, String signingToken, Map<String, Object> state,
+                    Consumer<Map<String, Object>> save) throws Exception {
     CertillionConfig.avisarAmbienteTeste();
     HttpClient http = HttpClient.newHttpClient();
-
     String clientToken = getClientToken(http);
-
-    // Passo 2 — se falhar, repetir só este (novo upload)
-    String documentHash = uploadDocument(http, pdfPath, clientToken);
-
-    // Passo 5 — se falhar, repetir só este com o documentHash existente (NÃO re-upload)
-    String transactionId = requestSignature(http, documentHash, signingToken);
-
-    // Passo 6 — se falhar, repetir só este com o transactionId existente (NÃO re-assinar)
-    return downloadDocument(http, transactionId, clientToken);
+    if (!state.containsKey("transaction_id")) {
+        if (!state.containsKey("document_hash")) {
+            if (Boolean.TRUE.equals(state.get("upload_attempted")))
+                throw new IllegalStateException("Upload anterior sem resultado conciliado.");
+            state.put("upload_attempted", true);
+            save.accept(Map.copyOf(state));
+            state.put("document_hash", uploadDocument(http, pdfPath, clientToken));
+            save.accept(Map.copyOf(state));
+        }
+        if (Boolean.TRUE.equals(state.get("signature_attempted")))
+            throw new IllegalStateException("Assinatura anterior sem resultado conciliado.");
+        state.put("signature_attempted", true);
+        save.accept(Map.copyOf(state));
+        state.put("transaction_id", requestSignature(http, (String) state.get("document_hash"), signingToken));
+        save.accept(Map.copyOf(state));
+    }
+    return downloadDocument(http, (String) state.get("transaction_id"), clientToken);
 }
 ```
 
-> `JsonUtil` representa o parsing de JSON via sua biblioteca preferida (Jackson, Gson).
-> Substitua pelos métodos equivalentes do seu projeto.
+> `JsonUtil` representa o parsing JSON da biblioteca do projeto.
 
 ---
 
