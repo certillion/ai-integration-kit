@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.7-beta | Linguagem: Node.js 18+ / TypeScript
+> Versão: 0.7.1-beta | Linguagem: Node.js 18+ / TypeScript
 > Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -91,7 +91,7 @@ async function getClientToken(): Promise<string> {
 ## Passo 3 — URL de autorização (abrir no navegador do usuário)
 
 ```typescript
-function buildAuthorizeUrl(challenge: string, psc: string, redirectUri: string): string {
+function buildAuthorizeUrl(challenge: string, psc: string, redirectUri: string, state: string): string {
   const q = new URLSearchParams({
     response_type: 'code',
     manager_id: CLIENT_ID,
@@ -100,10 +100,24 @@ function buildAuthorizeUrl(challenge: string, psc: string, redirectUri: string):
     psc,
     scope: 'signature_session',
     redirect_uri: redirectUri,
+    state,
   });
   return `${BASE_URL}/oauth/authorize?${q.toString()}`;
 }
 // O usuário autentica no PSC e o navegador volta para redirect_uri?code=...&state=...
+
+// Guardar na sessão do usuário, junto com o verifier, antes de redirecionar (R17)
+function newState(): string {
+  return base64URLEncode(crypto.randomBytes(32));
+}
+
+// Chamar no retorno, antes do /token; descartar o state guardado após o uso (R17)
+function checkCallbackState(received: string | undefined, expected: string | undefined): void {
+  const a = Buffer.from(received ?? ''), b = Buffer.from(expected ?? '');
+  if (!a.length || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new Error('state inválido: não trocar o code');
+  }
+}
 ```
 
 ## Passo 4 — Token de assinatura (troca do code)

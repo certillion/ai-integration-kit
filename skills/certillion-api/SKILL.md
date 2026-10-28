@@ -7,7 +7,7 @@ description: >
   authorize, document e signature. Para processos com signatários e process_id
   do módulo Flow, usar a skill certillion-flow-api.
 metadata:
-  version: "0.7-beta"
+  version: "0.7.1-beta"
   language: pt-BR
   classification: público
 
@@ -336,6 +336,22 @@ link de download do app. Essa ativação é uma ação no dispositivo, não um n
 endpoint de assinatura. A aplicação ao Android e a ordem de disparo em paralelo
 seguem a orientação operacional da Certillion; não extrapolar a outros PSCs ou ao Flow.
 
+### R17 — Proteger o retorno do `/authorize` com `state`
+
+O `/authorize` devolve o navegador para `redirect_uri?code=...&state=...`. Sem `state`,
+o sistema não sabe se aquele retorno é do pedido que ele mesmo iniciou.
+
+1. Gerar um `state` aleatório e imprevisível **a cada autorização** (ex.: 32 bytes em
+   Base64URL), no servidor. Não colocar dados do usuário ou do documento nele.
+2. Guardar o `state` na sessão do usuário, junto com o `code_verifier` e o pedido de
+   assinatura pendente, e enviá-lo no `/authorize`.
+3. No retorno, **antes** do `/token`, comparar o `state` recebido com o guardado. Se
+   faltar ou divergir, rejeitar o retorno e não trocar o `code`.
+4. Descartar o `state` após o uso; um novo login exige um novo `state`.
+
+Os exemplos por linguagem trazem `new_state`/`newState` e `check_callback_state`/
+`checkCallbackState` junto da URL de autorização.
+
 ---
 
 ## Exemplos de código e referência de endpoints
@@ -396,3 +412,4 @@ Antes de gerar qualquer código de integração, confirmar internamente:
 - [ ] Se o usuário assina vários documentos: `signature_session` + persistência/reutilização do `access_token` (R15)
 - [ ] Se usa certificado local: `CERTILLION_SIGNER` + `cloud-ws` e o usuário é orientado a instalar o Assinador Certillion (R16)
 - [ ] Se usa A1 no app em dispositivo móvel: iniciar `/signature` e acionar `css://signer.certillion.com/mobile_signature` no dispositivo em paralelo, sem esperar a resposta (R16)
+- [ ] O `/authorize` envia um `state` aleatório guardado na sessão, validado no retorno antes do `/token` (R17)

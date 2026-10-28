@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.7-beta | Linguagem: Java 11+ (java.net.http.HttpClient)
+> Versão: 0.7.1-beta | Linguagem: Java 11+ (java.net.http.HttpClient)
 > Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -116,8 +116,11 @@ String getClientToken(HttpClient http) throws Exception {
 ```java
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.Base64;
 
-String buildAuthorizeUrl(String challenge, String psc, String redirectUri) {
+String buildAuthorizeUrl(String challenge, String psc, String redirectUri, String state) {
     String e = StandardCharsets.UTF_8.name();
     StringBuilder q = new StringBuilder();
     q.append("response_type=code");
@@ -127,9 +130,25 @@ String buildAuthorizeUrl(String challenge, String psc, String redirectUri) {
     q.append("&psc=").append(psc);
     q.append("&scope=signature_session");
     q.append("&redirect_uri=").append(URLEncoder.encode(redirectUri, StandardCharsets.UTF_8));
+    q.append("&state=").append(URLEncoder.encode(state, StandardCharsets.UTF_8));
     return BASE_URL + "/oauth/authorize?" + q;
 }
 // O usuário autentica no PSC e o navegador volta para redirect_uri?code=...&state=...
+
+// Guardar na sessão do usuário, junto com o verifier, antes de redirecionar (R17)
+String newState() {
+    byte[] bytes = new byte[32];
+    new SecureRandom().nextBytes(bytes);
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+}
+
+// Chamar no retorno, antes do /token; descartar o state guardado após o uso (R17)
+void checkCallbackState(String received, String expected) {
+    if (received == null || expected == null || received.isEmpty() || !MessageDigest.isEqual(
+            received.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8))) {
+        throw new SecurityException("state inválido: não trocar o code");
+    }
+}
 ```
 
 ## Passo 4 — Token de assinatura (troca do code)

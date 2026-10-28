@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.7-beta | Linguagem: Ruby 3.0+
+> Versão: 0.7.1-beta | Linguagem: Ruby 3.0+
 > Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -89,7 +89,7 @@ end
 ## Passo 3 — URL de autorização (abrir no navegador do usuário)
 
 ```ruby
-def build_authorize_url(challenge, psc, redirect_uri)
+def build_authorize_url(challenge, psc, redirect_uri, state)
   params = URI.encode_www_form(
     'response_type' => 'code',
     'manager_id' => CLIENT_ID,
@@ -97,11 +97,26 @@ def build_authorize_url(challenge, psc, redirect_uri)
     'code_challenge_method' => 'S256',
     'psc' => psc,
     'scope' => 'signature_session',
-    'redirect_uri' => redirect_uri
+    'redirect_uri' => redirect_uri,
+    'state' => state
   )
   "#{BASE_URL}/oauth/authorize?#{params}"
 end
 # O usuário autentica no PSC e o navegador volta para redirect_uri?code=...&state=...
+
+require 'openssl'
+
+# Guardar na sessão do usuário, junto com o verifier, antes de redirecionar (R17)
+def new_state
+  base64_url_encode(SecureRandom.random_bytes(32))
+end
+
+# Chamar no retorno, antes do /token; descartar o state guardado após o uso (R17)
+def check_callback_state!(received, expected)
+  valid = received && expected && !received.empty? && received.bytesize == expected.bytesize &&
+          OpenSSL.fixed_length_secure_compare(received, expected)
+  raise SecurityError, 'state inválido: não trocar o code' unless valid
+end
 ```
 
 ## Passo 4 — Token de assinatura (troca do code)

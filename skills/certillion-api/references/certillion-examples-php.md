@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.7-beta | Linguagem: PHP 8.0+
+> Versão: 0.7.1-beta | Linguagem: PHP 8.0+
 > Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -96,7 +96,7 @@ function getClientToken(): string {
 
 ```php
 <?php
-function buildAuthorizeUrl(string $challenge, string $psc, string $redirectUri): string {
+function buildAuthorizeUrl(string $challenge, string $psc, string $redirectUri, string $state): string {
     global $CLIENT_ID;
     $q = http_build_query([
         'response_type' => 'code',
@@ -106,10 +106,23 @@ function buildAuthorizeUrl(string $challenge, string $psc, string $redirectUri):
         'psc' => $psc,
         'scope' => 'signature_session',
         'redirect_uri' => $redirectUri,
+        'state' => $state,
     ]);
     return BASE_URL . '/oauth/authorize?' . $q;
 }
 // O usuário autentica no PSC e o navegador volta para redirect_uri?code=...&state=...
+
+// Guardar na sessão do usuário, junto com o verifier, antes de redirecionar (R17)
+function newState(): string {
+    return base64UrlEncode(random_bytes(32));
+}
+
+// Chamar no retorno, antes do /token; descartar o state guardado após o uso (R17)
+function checkCallbackState(?string $received, ?string $expected): void {
+    if (!$received || !$expected || !hash_equals($expected, $received)) {
+        throw new RuntimeException('state inválido: não trocar o code');
+    }
+}
 ```
 
 ## Passo 4 — Token de assinatura (troca do code)

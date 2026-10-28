@@ -4,7 +4,7 @@
 > Não contém informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 
 > Guia conceitual para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.7-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.7.1-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -457,6 +457,12 @@ const challenge  = base64URLEncode(
 ```
 
 O mesmo algoritmo (S256) nas demais linguagens está em `certillion-examples-{linguagem}.md`.
+
+Junto do par PKCE, gerar também um `state` aleatório por autorização (por exemplo,
+`base64URLEncode(crypto.randomBytes(32))`). Guardá-lo na sessão do usuário com o
+`verifier`, enviá-lo em `/authorize` e conferi-lo no retorno antes de chamar `/token`.
+Se o `state` faltar ou divergir, o retorno não pertence a este pedido e o `code` não
+deve ser trocado. Ver R17 da skill.
 
 ---
 

@@ -1,6 +1,6 @@
 # Certillion Flow — Exemplos (Python 3.9+)
 
-Documento público · Versão do kit: 0.7-beta. Biblioteca padrão, sem dependências externas.
+Documento público · Versão do kit: 0.7.1-beta. Biblioteca padrão, sem dependências externas.
 
 Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.

@@ -1,6 +1,6 @@
 # Certillion Flow — Exemplos (Ruby 3.1+)
 
-Documento público · Versão do kit: 0.7-beta. Biblioteca padrão. Salvar como flow_ruby.rb.
+Documento público · Versão do kit: 0.7.1-beta. Biblioteca padrão. Salvar como flow_ruby.rb.
 
 Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.

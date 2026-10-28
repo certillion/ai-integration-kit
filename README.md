@@ -5,7 +5,7 @@ Documentação e regras para assistentes de IA integrarem os módulos Certillion
 e **Flow**, para processos com PDFs, signatários, acompanhamento e download.
 Os arquivos são neutros e podem ser usados nos diferentes assistentes de desenvolvimento.
 
-> Versão: 0.7-beta · Documentação pública.
+> Versão: 0.7.1-beta · Documentação pública.
 
 ## Para que serve
 
@@ -180,4 +180,4 @@ Dúvidas durante a integração: https://certillion.com/fale-conosco-certillion/
 
 ---
 
-*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.7-beta.*
+*Certillion é produto da e-Sec Tecnologia em Certificação Digital. Versão do kit: 0.7.1-beta.*

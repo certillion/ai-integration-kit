@@ -1,6 +1,6 @@
 # Certillion Flow — Diagnóstico e suporte
 
-Documento público · Versão do kit: 0.7-beta. Campos/códigos completos no
+Documento público · Versão do kit: 0.7.1-beta. Campos/códigos completos no
 [OpenAPI](certillion-flow-openapi.yaml); recuperação nos [fluxos](certillion-flow-integration-flows.md).
 
 ## Triagem por operação

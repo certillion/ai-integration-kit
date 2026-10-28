@@ -6,7 +6,7 @@ description: >
   download ZIP. Aplicar a signature-request, process_id e rotas /flow/restful.
   Para OAuth/PKCE, PSCs e transações do módulo CSS, usar certillion-api.
 metadata:
-  version: "0.7-beta"
+  version: "0.7.1-beta"
   language: pt-BR
   classification: público
 ---

@@ -1,6 +1,6 @@
 # Certillion Flow — Exemplos (Node.js 20+)
 
-Documento público · Versão do kit: 0.7-beta. ES modules e fetch nativo. Salvar o módulo como flow_nodejs.mjs.
+Documento público · Versão do kit: 0.7.1-beta. ES modules e fetch nativo. Salvar o módulo como flow_nodejs.mjs.
 
 Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.

@@ -2,7 +2,7 @@ openapi: "3.0.3"
 
 info:
   title: Certillion CSS — API de assinatura
-  version: "0.7-beta"
+  version: "0.7.1-beta"
   description: >
     Documento público — distribuível a clientes e parceiros integradores. Não contém
     informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
@@ -1417,8 +1417,10 @@ paths:
           schema:
             type: string
           description: >
-            Identificador de estado para correlacionar callbacks em ambientes
-            multi-requisição (ex.: aplicações server-side com controle de sessão).
+            Valor opaco devolvido no redirecionamento (redirect_uri?code=...&state=...).
+            Recomendado: valor aleatório por autorização, guardado na sessão do usuário e
+            conferido no retorno antes do /token, para correlacionar o callback e
+            rejeitar retornos que não foram iniciados pelo sistema.
         - name: login_hint
           in: query
           required: false

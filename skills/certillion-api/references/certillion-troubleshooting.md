@@ -6,7 +6,7 @@
 > time Certillion.
 
 > Guia de diagnóstico para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.7-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.7.1-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -48,6 +48,7 @@ Respostas curtas que **roteiam** para a fonte autoritativa (o detalhe não é du
 | Onde baixo o app Assinador Certillion? | Em `certillion.com` — Windows, macOS, iOS e Android. | api-reference §2 |
 | Como o usuário escolhe o provedor (PSC)? | Popular a lista de `GET /psc-info` (ou `/find-psc-accounts` para filtrar pelo CPF) e **acrescentar uma opção "Certificado Local / Token Físico"** que seleciona `CERTILLION_SIGNER`. O mesmo código serve a todos. | api-reference §2 |
 | O `/token` falha logo após receber o `code` (`invalid_grant`/`invalid_client`). | Faltam `manager_id`/`manager_secret`, ou o `redirect_uri` difere do enviado no `/authorize`. | skill **R14**; §4.1 |
+| O retorno do `/authorize` foi rejeitado por `state` inválido. | A sessão do usuário se perdeu entre a ida e a volta (cookie bloqueado ou expirado), o usuário abriu duas autorizações ou o `state` não foi guardado antes do redirecionamento. Iniciar nova autorização com novo `state` e `verifier`; não aceitar o `code` sem a conferência. | skill **R17**; api-reference §8 |
 | Preciso cadastrar o `redirect_uri`? | **Não.** Qualquer URL funciona, desde que **idêntica** em `/authorize` e `/token`. O cadastro é opcional. | openapi (`client_maintenance`); §4.1 |
 | Como tratar e exibir os erros? | 3 camadas: preservar o JSON bruto; mensagem **derivada do `status.code`** (nunca fixa); botão "Ver detalhes" com copiar/salvar. | skill **R13**; §1, §8 |
 | O erro caiu numa mensagem genérica e não sei a causa. | Capturar o retorno bruto (`status.code`/`name`/`detail` + HTTP) e seguir a triagem. | §1, §2, §4 |
@@ -384,4 +385,4 @@ function renderCertillionError(raw, httpStatus, container) {
 *Guia de troubleshooting baseado na documentação oficial Certillion, tutoriais, e-mail de
 integração e na experiência da equipe e-Sec. Lista canônica de códigos e mecânica de endpoints:
 `certillion-openapi.yaml`; resumo conceitual de erros: `certillion-api-reference.md` (Seção 9);
-regra de tratamento de erro: [`SKILL.md`](../SKILL.md) (Regra 13). Documento público — versão 0.7-beta.*
+regra de tratamento de erro: [`SKILL.md`](../SKILL.md) (Regra 13). Documento público — versão 0.7.1-beta.*

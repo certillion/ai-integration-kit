@@ -1,6 +1,6 @@
 # Certillion Flow — Fluxos e recuperação
 
-Documento público · Versão do kit: 0.7-beta. Aplicar junto da
+Documento público · Versão do kit: 0.7.1-beta. Aplicar junto da
 [skill](../SKILL.md) e do [OpenAPI](certillion-flow-openapi.yaml).
 
 ## Processo simples

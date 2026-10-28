@@ -1,6 +1,6 @@
 # Certillion Flow — Exemplos (PHP 8.1+)
 
-Documento público · Versão do kit: 0.7-beta. Extensão cURL habilitada. Salvar como flow_php.php.
+Documento público · Versão do kit: 0.7.1-beta. Extensão cURL habilitada. Salvar como flow_php.php.
 
 Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.

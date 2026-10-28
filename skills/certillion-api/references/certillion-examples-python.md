@@ -3,7 +3,7 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.7-beta | Linguagem: Python 3.9+
+> Versão: 0.7.1-beta | Linguagem: Python 3.9+
 > Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
@@ -96,7 +96,7 @@ def get_client_token() -> str:
 from urllib.parse import urlencode
 
 
-def build_authorize_url(challenge: str, psc: str, redirect_uri: str) -> str:
+def build_authorize_url(challenge: str, psc: str, redirect_uri: str, state: str) -> str:
     q = urlencode({
         'response_type': 'code',
         'manager_id': CLIENT_ID,
@@ -105,9 +105,25 @@ def build_authorize_url(challenge: str, psc: str, redirect_uri: str) -> str:
         'psc': psc,
         'scope': 'signature_session',
         'redirect_uri': redirect_uri,
+        'state': state,
     })
     return f'{BASE_URL}/oauth/authorize?{q}'
 # O usuário autentica no PSC e o navegador volta para redirect_uri?code=...&state=...
+
+
+import secrets
+from typing import Optional
+
+
+def new_state() -> str:
+    # Guardar na sessão do usuário, junto com o verifier, antes de redirecionar (R17)
+    return secrets.token_urlsafe(32)
+
+
+def check_callback_state(received: Optional[str], expected: Optional[str]) -> None:
+    # Chamar no retorno, antes do /token; descartar o state guardado após o uso (R17)
+    if not received or not expected or not secrets.compare_digest(received, expected):
+        raise PermissionError('state inválido: não trocar o code')
 ```
 
 ## Passo 4 — Token de assinatura (troca do code)
