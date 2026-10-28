@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Certillion Flow — API de processos de assinatura
-  version: 0.6-beta
+  version: 0.7-beta
   description: Contrato público do módulo Flow. Identificadores e autenticação são próprios deste módulo.
     Códigos de aplicação, códigos HTTP e estados de processo são camadas distintas. Uma resposta de criação
     não é conclusão; preservar IDs e recuperar por etapa. Este documento não define preços, quotas, logout

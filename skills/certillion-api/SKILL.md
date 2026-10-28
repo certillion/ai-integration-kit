@@ -7,7 +7,7 @@ description: >
   authorize, document e signature. Para processos com signatários e process_id
   do módulo Flow, usar a skill certillion-flow-api.
 metadata:
-  version: "0.6-beta"
+  version: "0.7-beta"
   language: pt-BR
   classification: público
 
@@ -44,24 +44,38 @@ Aplicar **sempre** que a tarefa envolver qualquer um dos seguintes:
 
 ## O kit de documentação — quando usar cada arquivo
 
-Os arquivos desta tabela são relativos a `docs/certillion/css/`, exceto o README
-da raiz do repositório. Esta skill faz parte de um conjunto de arquivos complementares. Cada um tem um papel
+Os arquivos de apoio ficam em `references/`, ao lado deste `SKILL.md`; o README
+fica no repositório do kit. Esta skill faz parte de um conjunto de arquivos complementares. Cada um tem um papel
 distinto; ao trabalhar numa integração, saber qual consultar evita retrabalho e contradição:
 
 | Arquivo | Papel | Consultar quando |
 |---------|-------|------------------|
-| **`certillion-skill.md`** (este) | As **regras** que todo código deve seguir | Sempre — é o ponto de partida que governa o comportamento |
-| **`certillion-api-reference.md`** | **Guia conceitual**: fluxos, o porquê das decisões, lógica de custo, diagnóstico | Para entender *como* e *por que* algo funciona (fluxo OAuth, sessão, custo) |
-| **`certillion-openapi.yaml`** | **Schema canônico** (OpenAPI 3.0): a mecânica exata de cada endpoint | Para o detalhe preciso de um endpoint — parâmetros, tipos, enums, body, erros |
-| **`certillion-examples-{linguagem}.md`** | **Exemplos de código** do fluxo essencial, por linguagem (Node.js, Python, PHP, Java, Ruby) | Ao escrever o código da integração na linguagem-alvo |
-| **`README.md`** (raiz do repositório) | **Como configurar** o kit nos principais harnesses (Claude Code, Codex, Cursor, Windsurf, Copilot, Antigravity) | Ao instalar o kit no ambiente de desenvolvimento |
+| **`SKILL.md`** (este) | As **regras** que todo código deve seguir | Sempre — é o ponto de partida que governa o comportamento |
+| **`references/certillion-api-reference.md`** | **Guia conceitual**: fluxos, o porquê das decisões, lógica de custo, diagnóstico | Para entender *como* e *por que* algo funciona (fluxo OAuth, sessão, custo) |
+| **`references/certillion-openapi.yaml`** | **Schema canônico** (OpenAPI 3.0): a mecânica exata de cada endpoint | Para o detalhe preciso de um endpoint — parâmetros, tipos, enums, body, erros |
+| **`references/certillion-examples-{linguagem}.md`** | **Exemplos de código** do fluxo essencial, por linguagem (Node.js, Python, PHP, Java, Ruby) | Ao escrever o código da integração na linguagem-alvo |
+| **[README do kit](https://github.com/certillion/ai-integration-kit#readme)** | **Como configurar** o kit nos principais harnesses (Claude Code, Codex, Cursor, Windsurf, Copilot, Antigravity) | Ao instalar o kit no ambiente de desenvolvimento |
 
 **Regra de precedência:** para qualquer detalhe sobre a mecânica de um endpoint (nome de campo,
 tipo, valor de enum, código de erro), o **`certillion-openapi.yaml` é a fonte única de verdade**.
 A skill, o guia e os exemplos não duplicam essas tabelas — apontam para o YAML. Em caso de
 divergência, o YAML prevalece.
 
-Se o módulo não estiver claro, consultar o [guia CSS/Flow](../certillion-module-selection.md).
+### CSS ou Flow
+
+Esta skill cobre o módulo CSS. O módulo Flow tem skill própria.
+
+| Sinal no pedido ou no código | Módulo |
+|---|---|
+| OAuth/PKCE, PSCs, `client_token`, `document_hash`, `/oauth/signature`, transação de assinatura, base `/css/restful/application` | CSS — skill `certillion-api` |
+| Processo com PDFs, signatários, prazos, convites, `document_id`, `process_id`, `/application/signature-request`, base `/flow/restful` | Flow — skill `certillion-flow-api` |
+
+Exemplos: “assinar PDF com certificado VIDAAS e reutilizar sessão” seleciona CSS;
+“enviar contrato para participantes e acompanhar a conclusão” seleciona Flow.
+Se o pedido disser somente “Certillion”, consultar as rotas/IDs e o objetivo do
+projeto. Persistindo ambiguidade, esclarecer o módulo antes de escolher autenticação
+e contrato. Não misturar tokens, nomes de campos, erros, preços ou limites dos módulos.
+Uma integração pode utilizar ambos; cada trecho segue seu próprio contrato.
 
 Ao gerar código, partir do exemplo da linguagem-alvo (`certillion-examples-*.md`) e aplicar as
 regras desta skill, usando os tipos do YAML em vez de inferir estruturas.
@@ -332,11 +346,11 @@ Esta skill define as regras; ela não duplica a mecânica de endpoints nem os ex
   dos 6 passos): consultar `certillion-openapi.yaml` (fonte canônica) e o `certillion-api-reference.md`.
 - **Exemplos de código prontos** do fluxo essencial (PKCE + 6 passos + orquestração com
   retentativa por passo), por linguagem:
-  - `certillion-examples-nodejs.md` (Node.js / TypeScript)
-  - `certillion-examples-python.md` (Python)
-  - `certillion-examples-php.md` (PHP)
-  - `certillion-examples-java.md` (Java)
-  - `certillion-examples-ruby.md` (Ruby)
+  - [`certillion-examples-nodejs.md`](references/certillion-examples-nodejs.md) (Node.js / TypeScript)
+  - [`certillion-examples-python.md`](references/certillion-examples-python.md) (Python)
+  - [`certillion-examples-php.md`](references/certillion-examples-php.md) (PHP)
+  - [`certillion-examples-java.md`](references/certillion-examples-java.md) (Java)
+  - [`certillion-examples-ruby.md`](references/certillion-examples-ruby.md) (Ruby)
 
 Ao gerar código, partir do exemplo da linguagem-alvo e aplicar as regras desta skill (em especial
 R1 guardrail, R2 separação dos 3 passos com retentativa por passo, R4 verificação de status,

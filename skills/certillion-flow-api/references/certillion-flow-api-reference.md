@@ -1,6 +1,6 @@
 # Certillion Flow — Referência de integração
 
-Documento público · Versão do kit: 0.6-beta.
+Documento público · Versão do kit: 0.7-beta.
 
 Consultar conforme a tarefa: [conta e sessão](#conta-e-sessão), [documentos e participantes](#documentos-e-participantes),
 [modalidades](#modalidades), [modelos visuais](#modelos-visuais), [prazos](#prazos-e-lembretes)

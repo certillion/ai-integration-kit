@@ -6,7 +6,7 @@
 > time Certillion.
 
 > Guia de diagnóstico para integração da assinatura digital ICP-Brasil do Certillion.
-> Versão: 0.6-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
+> Versão: 0.7-beta | Base URL padrão: `https://cloud.certillion.com/css/restful/application`
 > ⚠️ Quando o PSC for `CERTILLION_SIGNER`, usar obrigatoriamente: `https://cloud-ws.certillion.com/css/restful/application`
 
 > **Como este guia se relaciona com os demais arquivos.**
@@ -15,7 +15,7 @@
 > coletar e como acionar o suporte. Ele **não duplica** os demais arquivos — a FAQ **roteia** para
 > a seção autoritativa de cada tema. A lista canônica de códigos de erro está em
 > `certillion-openapi.yaml` e o resumo conceitual em `certillion-api-reference.md` (Seção 9); o
-> princípio de tratamento de erro em 3 camadas é a **Regra 13** da `certillion-skill.md`.
+> princípio de tratamento de erro em 3 camadas é a **Regra 13** do [`SKILL.md`](../SKILL.md).
 > Em caso de divergência sobre um campo, tipo ou código, o `certillion-openapi.yaml` prevalece.
 
 ---
@@ -384,4 +384,4 @@ function renderCertillionError(raw, httpStatus, container) {
 *Guia de troubleshooting baseado na documentação oficial Certillion, tutoriais, e-mail de
 integração e na experiência da equipe e-Sec. Lista canônica de códigos e mecânica de endpoints:
 `certillion-openapi.yaml`; resumo conceitual de erros: `certillion-api-reference.md` (Seção 9);
-regra de tratamento de erro: `certillion-skill.md` (Regra 13). Documento público — versão 0.6-beta.*
+regra de tratamento de erro: [`SKILL.md`](../SKILL.md) (Regra 13). Documento público — versão 0.7-beta.*

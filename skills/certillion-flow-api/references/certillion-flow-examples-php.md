@@ -1,8 +1,8 @@
 # Certillion Flow — Exemplos (PHP 8.1+)
 
-Documento público · Versão do kit: 0.6-beta. Extensão cURL habilitada. Salvar como flow_php.php.
+Documento público · Versão do kit: 0.7-beta. Extensão cURL habilitada. Salvar como flow_php.php.
 
-Consultar [skill](certillion-flow-skill.md), [OpenAPI](certillion-flow-openapi.yaml)
+Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.
 O módulo abaixo não executa chamadas ao ser carregado. Sua aplicação decide quando
 criar um processo e quando somente acompanhar um ID existente.

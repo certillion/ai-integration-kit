@@ -6,7 +6,7 @@ description: >
   download ZIP. Aplicar a signature-request, process_id e rotas /flow/restful.
   Para OAuth/PKCE, PSCs e transações do módulo CSS, usar certillion-api.
 metadata:
-  version: "0.6-beta"
+  version: "0.7-beta"
   language: pt-BR
   classification: público
 ---
@@ -19,20 +19,35 @@ os resultados. A autenticação da conta solicitante não assina pelos participa
 
 ## Referências sob demanda
 
-Paths relativos a este arquivo:
+Arquivos em `references/`, ao lado deste `SKILL.md`:
 
 | Necessidade | Ler |
 |---|---|
-| Campos, tipos, headers, enums e respostas | [OpenAPI canônico](certillion-flow-openapi.yaml) |
-| Conta, modalidades, sessão, prazos e modelos | [Referência conceitual](certillion-flow-api-reference.md) |
-| Dependências, callbacks, recuperação e visibilidade | [Fluxos de integração](certillion-flow-integration-flows.md) |
-| Erros e diagnóstico | [Troubleshooting](certillion-flow-troubleshooting.md) |
-| Código na linguagem do projeto | Exemplos [Python](certillion-flow-examples-python.md), [Node.js](certillion-flow-examples-nodejs.md), [PHP](certillion-flow-examples-php.md), [Java](certillion-flow-examples-java.md) ou [Ruby](certillion-flow-examples-ruby.md) |
-| Identificar o módulo | [Seleção CSS/Flow](../certillion-module-selection.md) |
+| Campos, tipos, headers, enums e respostas | [OpenAPI canônico](references/certillion-flow-openapi.yaml) |
+| Conta, modalidades, sessão, prazos e modelos | [Referência conceitual](references/certillion-flow-api-reference.md) |
+| Dependências, callbacks, recuperação e visibilidade | [Fluxos de integração](references/certillion-flow-integration-flows.md) |
+| Erros e diagnóstico | [Troubleshooting](references/certillion-flow-troubleshooting.md) |
+| Código na linguagem do projeto | Exemplos [Python](references/certillion-flow-examples-python.md), [Node.js](references/certillion-flow-examples-nodejs.md), [PHP](references/certillion-flow-examples-php.md), [Java](references/certillion-flow-examples-java.md) ou [Ruby](references/certillion-flow-examples-ruby.md) |
 
 O OpenAPI é o contrato canônico de endpoints deste conjunto. Usar a referência para
 conceitos e os exemplos como ponto de partida. Não preencher lacunas de contrato
 com operações ou campos de outro módulo.
+
+## CSS ou Flow
+
+Esta skill cobre o módulo Flow. O módulo CSS tem skill própria.
+
+| Sinal no pedido ou no código | Módulo |
+|---|---|
+| OAuth/PKCE, PSCs, `client_token`, `document_hash`, `/oauth/signature`, transação de assinatura, base `/css/restful/application` | CSS — skill `certillion-api` |
+| Processo com PDFs, signatários, prazos, convites, `document_id`, `process_id`, `/application/signature-request`, base `/flow/restful` | Flow — skill `certillion-flow-api` |
+
+Exemplos: “assinar PDF com certificado VIDAAS e reutilizar sessão” seleciona CSS;
+“enviar contrato para participantes e acompanhar a conclusão” seleciona Flow.
+Se o pedido disser somente “Certillion”, consultar as rotas/IDs e o objetivo do
+projeto. Persistindo ambiguidade, esclarecer o módulo antes de escolher autenticação
+e contrato. Não misturar tokens, nomes de campos, erros, preços ou limites dos módulos.
+Uma integração pode utilizar ambos; cada trecho segue seu próprio contrato.
 
 ## Regras de integração
 

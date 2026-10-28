@@ -3,8 +3,8 @@
 > **Documento público** — distribuível a clientes e parceiros integradores. Não contém
 > informação interna ou confidencial. Propósito: habilitar a integração com a API Certillion.
 >
-> Versão: 0.6-beta | Linguagem: PHP 8.0+
-> Referenciado por `certillion-skill.md` e `certillion-api-reference.md`.
+> Versão: 0.7-beta | Linguagem: PHP 8.0+
+> Referenciado pelo [`SKILL.md`](../SKILL.md) e por `certillion-api-reference.md`.
 > A mecânica completa de cada endpoint (parâmetros, tipos, erros) está em `certillion-openapi.yaml`.
 
 Este arquivo demonstra o **fluxo essencial** de assinatura: geração do par PKCE, os 6 passos

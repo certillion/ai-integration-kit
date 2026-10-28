@@ -1,8 +1,8 @@
 # Certillion Flow — Exemplos (Ruby 3.1+)
 
-Documento público · Versão do kit: 0.6-beta. Biblioteca padrão. Salvar como flow_ruby.rb.
+Documento público · Versão do kit: 0.7-beta. Biblioteca padrão. Salvar como flow_ruby.rb.
 
-Consultar [skill](certillion-flow-skill.md), [OpenAPI](certillion-flow-openapi.yaml)
+Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.
 O módulo abaixo não executa chamadas ao ser carregado. Sua aplicação decide quando
 criar um processo e quando somente acompanhar um ID existente.

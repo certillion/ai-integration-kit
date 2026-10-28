@@ -1,8 +1,8 @@
 # Certillion Flow — Exemplos (Java 17+)
 
-Documento público · Versão do kit: 0.6-beta. Jackson Databind 2.x no classpath (dependência com.fasterxml.jackson.core:jackson-databind gerenciada pelo projeto). Salvar como FlowExample.java.
+Documento público · Versão do kit: 0.7-beta. Jackson Databind 2.x no classpath (dependência com.fasterxml.jackson.core:jackson-databind gerenciada pelo projeto). Salvar como FlowExample.java.
 
-Consultar [skill](certillion-flow-skill.md), [OpenAPI](certillion-flow-openapi.yaml)
+Consultar [skill](../SKILL.md), [OpenAPI](certillion-flow-openapi.yaml)
 e [fluxos](certillion-flow-integration-flows.md) para regras e recuperação.
 O módulo abaixo não executa chamadas ao ser carregado. Sua aplicação decide quando
 criar um processo e quando somente acompanhar um ID existente.
